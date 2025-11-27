@@ -1,0 +1,21 @@
+[project]
+name = "ai-processor"
+version = "1.0.0"
+description = "AI processor for FGB broadcast parsing and style rewriting"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "google-generativeai>=0.3.0",
+    "pyyaml>=6.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.26.0",
+]
