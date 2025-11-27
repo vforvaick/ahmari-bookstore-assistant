@@ -1,5 +1,7 @@
 import { config } from 'dotenv';
 import pino from 'pino';
+import { WhatsAppClient } from './whatsapp';
+import path from 'path';
 
 config();
 
@@ -10,8 +12,25 @@ async function main() {
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`AI Processor URL: ${process.env.AI_PROCESSOR_URL || 'not set'}`);
 
-  // TODO: Initialize WhatsApp connection
-  logger.info('Bot initialized successfully');
+  // Initialize WhatsApp client
+  const sessionsPath = path.resolve('./sessions');
+  const waClient = new WhatsAppClient(sessionsPath);
+
+  try {
+    const sock = await waClient.connect();
+    logger.info('WhatsApp client initialized');
+
+    // Keep process running
+    process.on('SIGINT', async () => {
+      logger.info('Shutting down...');
+      await waClient.disconnect();
+      process.exit(0);
+    });
+
+  } catch (error) {
+    logger.error('Failed to connect to WhatsApp:', error);
+    process.exit(1);
+  }
 }
 
 main().catch((error) => {

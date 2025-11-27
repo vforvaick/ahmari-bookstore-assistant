@@ -1,0 +1,84 @@
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+  WASocket,
+  Browsers,
+} from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import pino from 'pino';
+import qrcode from 'qrcode-terminal';
+import path from 'path';
+
+const logger = pino({ level: 'info' });
+
+export class WhatsAppClient {
+  private sock: WASocket | null = null;
+  private sessionsPath: string;
+
+  constructor(sessionsPath: string = './sessions') {
+    this.sessionsPath = sessionsPath;
+  }
+
+  async connect(): Promise<WASocket> {
+    const { state, saveCreds } = await useMultiFileAuthState(
+      path.resolve(this.sessionsPath)
+    );
+
+    this.sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false, // We'll handle QR display ourselves
+      logger: pino({ level: 'warn' }),
+      browser: Browsers.macOS('Desktop'),
+      getMessage: async (key) => {
+        // Retrieve message from store if needed
+        return { conversation: '' };
+      },
+    });
+
+    // Handle credentials update
+    this.sock.ev.on('creds.update', saveCreds);
+
+    // Handle connection updates
+    this.sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      // Display QR code
+      if (qr) {
+        logger.info('QR Code received, scan to authenticate:');
+        qrcode.generate(qr, { small: true });
+      }
+
+      // Handle connection states
+      if (connection === 'close') {
+        const shouldReconnect =
+          (lastDisconnect?.error as Boom)?.output?.statusCode !==
+          DisconnectReason.loggedOut;
+
+        logger.warn('Connection closed:', lastDisconnect?.error);
+
+        if (shouldReconnect) {
+          logger.info('Reconnecting...');
+          await this.connect();
+        } else {
+          logger.error('Logged out, please delete sessions and restart');
+          process.exit(1);
+        }
+      } else if (connection === 'open') {
+        logger.info('✓ WhatsApp connection established');
+      }
+    });
+
+    return this.sock;
+  }
+
+  getSocket(): WASocket | null {
+    return this.sock;
+  }
+
+  async disconnect() {
+    if (this.sock) {
+      await this.sock.logout();
+      this.sock = null;
+    }
+  }
+}
