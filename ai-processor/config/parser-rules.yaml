@@ -1,0 +1,70 @@
+patterns:
+  # Type: Remainder or Request
+  type:
+    - regex: '(Remainder|Request)\s*\|\s*ETA'
+      group: 1
+
+  # ETA: Apr '26, etc
+  eta:
+    - regex: 'ETA\s*:\s*([A-Za-z]+\s*''?\d{2})'
+      group: 1
+
+  # Close date
+  close_date:
+    - regex: 'Close\s*:\s*(\d+\s+[A-Za-z]+)'
+      group: 1
+
+  # Title and format: *Book Title* (HB)
+  title:
+    - regex: '\*([^*]+)\*\s*\((HB|PB|BB)\)'
+      group: 1
+    - regex: '\*\*([^*]+)\*\*\s*\((HB|PB|BB)\)'
+      group: 1
+
+  format:
+    - regex: '\*[^*]+\*\s*\((HB|PB|BB)\)'
+      group: 1
+    - regex: '\*\*[^*]+\*\*\s*\((HB|PB|BB)\)'
+      group: 1
+
+  # Price: 🏷️ Rp 115.000 or HB - Rp 245.000 / PB - Rp 160.000
+  price_main:
+    - regex: '🏷️\s*(?:HB\s*-\s*)?Rp\s*([0-9.,]+)'
+      group: 1
+      transform: 'remove_separators'
+
+  price_secondary:
+    - regex: '/\s*(?:PB|BB)\s*-\s*Rp\s*([0-9.,]+)'
+      group: 1
+      transform: 'remove_separators'
+
+  # Min order
+  min_order:
+    - regex: '\*+Min\.\s*(\d+\s+pcs[^*\n]+)'
+      group: 1
+    - regex: 'NETT\s+PRICE'
+      group: 0
+
+  # Tags: _New Oct_ 🔥
+  tags:
+    - regex: '_New\s+(?:Oct|Sept|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug)_'
+      group: 0
+      multi: true
+    - regex: 'NETT\s+PRICE'
+      group: 0
+      multi: true
+
+  # Separator emoji
+  separator:
+    - regex: '(🌳|🦊){2,}'
+      group: 1
+
+  # Preview links
+  preview_links:
+    - regex: 'https?://[^\s]+'
+      group: 0
+      multi: true
+
+# Skip rules (can be toggled)
+skip_rules:
+  preview_links: false  # Set true to skip extraction
