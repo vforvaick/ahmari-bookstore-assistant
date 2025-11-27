@@ -41,10 +41,12 @@ const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const pino_1 = __importDefault(require("pino"));
 const qrcode_terminal_1 = __importDefault(require("qrcode-terminal"));
 const path_1 = __importDefault(require("path"));
+const messageHandler_1 = require("./messageHandler");
 const logger = (0, pino_1.default)({ level: 'info' });
 class WhatsAppClient {
     constructor(sessionsPath = './sessions') {
         this.sock = null;
+        this.messageHandler = null;
         this.sessionsPath = sessionsPath;
     }
     async connect() {
@@ -97,6 +99,22 @@ class WhatsAppClient {
             await this.sock.logout();
             this.sock = null;
         }
+    }
+    setupMessageHandler(ownerJid, mediaPath = './media') {
+        if (!this.sock) {
+            throw new Error('Socket not connected');
+        }
+        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, ownerJid, mediaPath);
+        // Listen for messages
+        this.sock.ev.on('messages.upsert', async ({ messages }) => {
+            for (const message of messages) {
+                // Ignore messages from self
+                if (message.key.fromMe)
+                    continue;
+                // Handle message
+                await this.messageHandler.handleMessage(message);
+            }
+        });
     }
 }
 exports.WhatsAppClient = WhatsAppClient;

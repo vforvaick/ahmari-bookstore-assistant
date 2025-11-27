@@ -8,12 +8,14 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import path from 'path';
+import { MessageHandler } from './messageHandler';
 
 const logger = pino({ level: 'info' });
 
 export class WhatsAppClient {
   private sock: WASocket | null = null;
   private sessionsPath: string;
+  private messageHandler: MessageHandler | null = null;
 
   constructor(sessionsPath: string = './sessions') {
     this.sessionsPath = sessionsPath;
@@ -80,5 +82,24 @@ export class WhatsAppClient {
       await this.sock.logout();
       this.sock = null;
     }
+  }
+
+  setupMessageHandler(ownerJid: string, mediaPath: string = './media') {
+    if (!this.sock) {
+      throw new Error('Socket not connected');
+    }
+
+    this.messageHandler = new MessageHandler(this.sock, ownerJid, mediaPath);
+
+    // Listen for messages
+    this.sock.ev.on('messages.upsert', async ({ messages }) => {
+      for (const message of messages) {
+        // Ignore messages from self
+        if (message.key.fromMe) continue;
+
+        // Handle message
+        await this.messageHandler!.handleMessage(message);
+      }
+    });
   }
 }
