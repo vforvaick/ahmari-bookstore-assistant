@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+*.env.local
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# WhatsApp sessions
+wa-sessions/
+sessions/
+
+# Media files
+media/
+temp/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker-data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
