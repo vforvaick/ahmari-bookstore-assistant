@@ -1,8 +1,10 @@
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { detectFGBBroadcast, isOwnerMessage, DetectionResult } from './detector';
+import { AIClient } from './aiClient';
 import path from 'path';
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 
 const logger = pino({ level: 'info' });
 
@@ -10,6 +12,7 @@ export class MessageHandler {
   constructor(
     private sock: WASocket,
     private ownerJid: string,
+    private aiClient: AIClient,
     private mediaPath: string = './media'
   ) {
     // Ensure media directory exists
@@ -61,51 +64,92 @@ export class MessageHandler {
       return;
     }
 
-    // Download media
     const mediaPaths: string[] = [];
-    if (detection.hasMedia && detection.mediaMessages.length > 0) {
-      let mediaIndex = 0;
-      for (const mediaMsg of detection.mediaMessages) {
-        try {
-          const buffer = await downloadMediaMessage(
-            { message: mediaMsg } as any,
-            'buffer',
-            {}
-          );
 
-          // Determine file extension from media type
-          let extension = 'bin';
-          if (mediaMsg.imageMessage) {
-            extension = 'jpg';
-          } else if (mediaMsg.videoMessage) {
-            extension = 'mp4';
+    try {
+      // Send processing message
+      await this.sock.sendMessage(from, {
+        text: '⏳ Processing FGB broadcast...\n\n1. Downloading media\n2. Parsing data\n3. Generating draft',
+      });
+
+      // Download media
+      if (detection.hasMedia && detection.mediaMessages.length > 0) {
+        let mediaIndex = 0;
+        for (const mediaMsg of detection.mediaMessages) {
+          try {
+            const buffer = await downloadMediaMessage(
+              { message: mediaMsg } as any,
+              'buffer',
+              {}
+            );
+
+            // Determine file extension from media type
+            let extension = 'bin';
+            if (mediaMsg.imageMessage) {
+              extension = 'jpg';
+            } else if (mediaMsg.videoMessage) {
+              extension = 'mp4';
+            }
+
+            // Save media file with unique filename (async)
+            const timestamp = Date.now();
+            const filename = `fgb_${timestamp}_${mediaIndex}.${extension}`;
+            const filepath = path.join(this.mediaPath, filename);
+
+            await fsPromises.writeFile(filepath, buffer as Buffer);
+            mediaPaths.push(filepath);
+
+            logger.info(`Media saved: ${filepath}`);
+            mediaIndex++;
+          } catch (error) {
+            logger.error('Failed to download media:', error);
           }
+        }
+      }
 
-          // Save media file with unique filename
-          const timestamp = Date.now();
-          const filename = `fgb_${timestamp}_${mediaIndex}.${extension}`;
-          const filepath = path.join(this.mediaPath, filename);
+      // Parse with AI Processor
+      const parsedData = await this.aiClient.parse(
+        detection.text,
+        mediaPaths.length
+      );
 
-          fs.writeFileSync(filepath, buffer as Buffer);
-          mediaPaths.push(filepath);
+      logger.info(`Parse successful - format: ${parsedData.format || 'unknown'}`);
 
-          logger.info(`Media saved: ${filepath}`);
-          mediaIndex++;
+      // Generate draft
+      const generated = await this.aiClient.generate(parsedData);
+
+      logger.info('Draft generated successfully');
+
+      // Send draft with media
+      if (mediaPaths.length > 0) {
+        await this.sock.sendMessage(from, {
+          image: { url: mediaPaths[0] },
+          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim sekarang\n• *EDIT DULU* - edit manual dulu\n• *SCHEDULE* - masukkan ke antrian`,
+        });
+      } else {
+        await this.sock.sendMessage(from, {
+          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim sekarang\n• *EDIT DULU* - edit manual dulu\n• *SCHEDULE* - masukkan ke antrian`,
+        });
+      }
+
+      // TODO: Save conversation state to database
+      // TODO: Wait for user response (YES/EDIT/SCHEDULE)
+
+    } catch (error: any) {
+      logger.error('Error processing FGB broadcast:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Error: ${error.message}\n\nSilakan coba lagi.`,
+      });
+    } finally {
+      // Cleanup temporary media files
+      for (const filepath of mediaPaths) {
+        try {
+          await fsPromises.unlink(filepath);
+          logger.debug(`Cleaned up media: ${filepath}`);
         } catch (error) {
-          logger.error('Failed to download media:', error);
+          logger.error(`Failed to cleanup media ${filepath}:`, error);
         }
       }
     }
-
-    // TODO: Send to AI processor for parsing
-    // TODO: Generate draft
-    // TODO: Send draft back to user for approval
-
-    // For now, just acknowledge
-    await this.sock.sendMessage(from, {
-      text: `✓ FGB broadcast terdeteksi!\n\nProses parsing dan generate draft...\n\n(Fitur ini akan diimplementasi di task berikutnya)`,
-    });
-
-    logger.info('FGB broadcast processed, media count:', mediaPaths.length);
   }
 }

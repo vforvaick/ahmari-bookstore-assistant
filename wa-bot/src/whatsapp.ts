@@ -9,6 +9,7 @@ import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import path from 'path';
 import { MessageHandler } from './messageHandler';
+import type { AIClient } from './aiClient';
 
 const logger = pino({ level: 'info' });
 
@@ -84,12 +85,21 @@ export class WhatsAppClient {
     }
   }
 
-  setupMessageHandler(ownerJid: string, mediaPath: string = './media') {
+  setupMessageHandler(
+    ownerJid: string,
+    aiClient: AIClient,
+    mediaPath: string = './media'
+  ) {
     if (!this.sock) {
       throw new Error('Socket not connected');
     }
 
-    this.messageHandler = new MessageHandler(this.sock, ownerJid, mediaPath);
+    this.messageHandler = new MessageHandler(
+      this.sock,
+      ownerJid,
+      aiClient,
+      mediaPath
+    );
 
     // Listen for messages
     this.sock.ev.on('messages.upsert', async ({ messages }) => {

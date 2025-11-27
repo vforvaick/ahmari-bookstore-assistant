@@ -100,11 +100,11 @@ class WhatsAppClient {
             this.sock = null;
         }
     }
-    setupMessageHandler(ownerJid, mediaPath = './media') {
+    setupMessageHandler(ownerJid, aiClient, mediaPath = './media') {
         if (!this.sock) {
             throw new Error('Socket not connected');
         }
-        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, ownerJid, mediaPath);
+        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, ownerJid, aiClient, mediaPath);
         // Listen for messages
         this.sock.ev.on('messages.upsert', async ({ messages }) => {
             for (const message of messages) {
