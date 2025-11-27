@@ -1,0 +1,12 @@
+node_modules
+dist
+*.log
+.env
+.env.local
+sessions
+data
+media
+temp
+.git
+.gitignore
+README.md
