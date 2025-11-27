@@ -1,14 +1,42 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
+from typing import Optional
+import logging
+
+from parser import FGBParser
+from gemini_client import GeminiClient
+from models import ParsedBroadcast, GenerateRequest, GenerateResponse
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     gemini_api_key: str
 
-    class Config:
-        env_file = ".env"
+    model_config = ConfigDict(env_file=".env")
 
 settings = Settings()
 app = FastAPI(title="AI Processor", version="1.0.0")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict this
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize services
+parser = FGBParser()
+gemini_client = GeminiClient(api_key=settings.gemini_api_key)
+
+class ParseRequest(BaseModel):
+    text: str
+    media_count: int = 0
 
 @app.get("/health")
 async def health_check():
@@ -19,5 +47,46 @@ async def root():
     return {
         "service": "AI Processor",
         "version": "1.0.0",
-        "endpoints": ["/parse", "/generate", "/extract-style"]
+        "endpoints": ["/parse", "/generate", "/extract-style", "/health"]
+    }
+
+@app.post("/parse", response_model=ParsedBroadcast)
+async def parse_broadcast(request: ParseRequest):
+    """Parse FGB broadcast text into structured data"""
+    try:
+        logger.info(f"Parsing broadcast, text length: {len(request.text)}")
+        result = parser.parse(request.text, request.media_count)
+        logger.info(f"Parsed successfully: {result.title}")
+        return result
+    except Exception as e:
+        logger.error(f"Parse error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")
+
+@app.post("/generate", response_model=GenerateResponse)
+async def generate_broadcast(request: GenerateRequest):
+    """Generate Indonesian broadcast from parsed data"""
+    try:
+        logger.info(f"Generating broadcast for: {request.parsed_data.title}")
+
+        draft = await gemini_client.generate_broadcast(
+            request.parsed_data,
+            user_edit=request.user_edit
+        )
+
+        logger.info(f"Generated successfully, length: {len(draft)}")
+
+        return GenerateResponse(
+            draft=draft,
+            parsed_data=request.parsed_data
+        )
+    except Exception as e:
+        logger.error(f"Generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+@app.post("/extract-style")
+async def extract_style():
+    """Extract style profile from chat export (placeholder for now)"""
+    return {
+        "status": "not_implemented",
+        "message": "Style extraction will be implemented in future task"
     }
