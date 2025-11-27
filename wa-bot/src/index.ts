@@ -20,6 +20,16 @@ async function main() {
     const sock = await waClient.connect();
     logger.info('WhatsApp client initialized');
 
+    // Setup message handler
+    const ownerJid = process.env.OWNER_JID || '';
+    if (!ownerJid) {
+      logger.error('OWNER_JID not set in environment');
+      process.exit(1);
+    }
+
+    waClient.setupMessageHandler(ownerJid, path.resolve('./media'));
+    logger.info('Message handler setup complete');
+
     // Keep process running
     process.on('SIGINT', async () => {
       logger.info('Shutting down...');

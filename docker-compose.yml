@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  ai-processor:
+    build:
+      context: ./ai-processor
+      dockerfile: Dockerfile
+    container_name: bookstore-ai-processor
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - sqlite-data:/app/data
+      - ./ai-processor/config:/app/config:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - bookstore-net
+
+  wa-bot:
+    build:
+      context: ./wa-bot
+      dockerfile: Dockerfile
+    container_name: bookstore-wa-bot
+    environment:
+      - NODE_ENV=production
+      - AI_PROCESSOR_URL=http://ai-processor:8000
+      - DATABASE_PATH=/app/data/bookstore.db
+      - OWNER_JID=${OWNER_JID}
+      - TARGET_GROUP_JID=${TARGET_GROUP_JID}
+    volumes:
+      - wa-sessions:/app/sessions
+      - sqlite-data:/app/data
+      - media:/app/media
+    restart: unless-stopped
+    depends_on:
+      ai-processor:
+        condition: service_healthy
+    networks:
+      - bookstore-net
+
+  scheduler:
+    build:
+      context: ./scheduler
+      dockerfile: Dockerfile
+    container_name: bookstore-scheduler
+    environment:
+      - DATABASE_PATH=/app/data/bookstore.db
+      - QUEUE_INTERVAL_MINUTES=${QUEUE_INTERVAL_MINUTES:-47}
+    volumes:
+      - sqlite-data:/app/data
+      - media:/app/media
+    restart: unless-stopped
+    depends_on:
+      - wa-bot
+    networks:
+      - bookstore-net
+
+volumes:
+  wa-sessions:
+    driver: local
+  sqlite-data:
+    driver: local
+  media:
+    driver: local
+
+networks:
+  bookstore-net:
+    driver: bridge
