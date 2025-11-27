@@ -1,0 +1,26 @@
+{
+  "greetings": [
+    "Halooo moms!",
+    "Ada buku bagus nih!",
+    "Moms ada promo nih!",
+    "Haii! Ada buku lucu nih"
+  ],
+  "emoji_usage": {
+    "frequency": "medium",
+    "common": ["😍", "🤩", "😆", "📚", "💰"]
+  },
+  "tone": "friendly_informative",
+  "casual_words": {
+    "very": ["bgtt", "bingits", "banget nih", "banget"],
+    "beautiful": ["cakepp", "cantik bgtt", "bagus bgtt"],
+    "cheap": ["murmer", "murah jugaa", "harganya oke"],
+    "good": ["bagus", "oke nih", "recommended"]
+  },
+  "structure_preference": {
+    "conversational_intro": true,
+    "emoji_before_price": true,
+    "include_age_recommendation": true,
+    "include_benefits": true
+  },
+  "style_notes": "Selow tapi serius dan insightful. Informative tentang manfaat buku dan usia cocok. Casual Indonesian dengan kata-kata seperti 'bgtt', 'yahh', 'gausa', 'murmer'. Personal touch kadang mention pengalaman."
+}
