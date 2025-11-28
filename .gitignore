@@ -37,3 +37,15 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Documentation (not for public repo)
+docs/
+
+# WhatsApp Chat exports
+WhatsApp Chat*/
+
+# Package lock (if using different package managers)
+package-lock.json
+
+# OSGrep cache
+.osgrep/
