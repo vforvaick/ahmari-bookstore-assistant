@@ -34,7 +34,7 @@ services:
       - OWNER_JID=${OWNER_JID}
       - TARGET_GROUP_JID=${TARGET_GROUP_JID}
     volumes:
-      - wa-sessions:/app/sessions
+      - ./wa-bot/sessions:/app/sessions:ro
       - sqlite-data:/app/data
       - media:/app/media
     restart: unless-stopped

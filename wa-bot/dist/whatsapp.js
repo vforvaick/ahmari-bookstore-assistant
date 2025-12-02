@@ -50,12 +50,14 @@ class WhatsAppClient {
         this.sessionsPath = sessionsPath;
     }
     async connect() {
+        const { version } = await (0, baileys_1.fetchLatestBaileysVersion)();
         const { state, saveCreds } = await (0, baileys_1.useMultiFileAuthState)(path_1.default.resolve(this.sessionsPath));
         this.sock = (0, baileys_1.default)({
             auth: state,
             printQRInTerminal: false, // We'll handle QR display ourselves
             logger: (0, pino_1.default)({ level: 'warn' }),
             browser: baileys_1.Browsers.macOS('Desktop'),
+            version,
             getMessage: async (key) => {
                 // Retrieve message from store if needed
                 return { conversation: '' };

@@ -24,7 +24,7 @@ HP WhatsApp kamu → QR Code → Baileys → Bot bisa terima & kirim pesan
 
 ## 🚀 Quick Start (5 Menit)
 
-### Opsi 1: Pakai Docker (RECOMMENDED)
+### Opsi 1: Pakai Docker (RECOMMENDED - jika IP tidak diblokir)
 
 **Paling mudah, tinggal scan QR code!**
 
@@ -55,7 +55,7 @@ WhatsApp client initialized
 Message handler setup complete
 ```
 
-### Opsi 2: Local Development (Manual)
+### Opsi 2: Local Development (Manual / Host Mode)
 
 **Untuk development/testing tanpa Docker:**
 
@@ -80,7 +80,12 @@ GEMINI_API_KEY=your_key uvicorn main:app --reload
 cd wa-bot
 npm run dev
 
-# 5. Scan QR code yang muncul
+# 5. Scan QR code yang muncul (lihat catatan QR di bawah)
+
+#### Skrip bantu (host):
+- `npm run qr:dev` → tampilkan QR untuk pairing (ts-node, tidak build)
+- `npm run list:groups` → build + list grup dengan sesi saat ini
+- `node scripts/list-groups-host.js` → host helper (ada shim WebCrypto untuk Node <20)
 ```
 
 ---
@@ -110,6 +115,11 @@ npm run dev
 ---
 
 ## 🔧 Detailed Setup Guide
+### Catatan IP / Jaringan
+- Jika setelah scan QR selalu `Connection Failure` / `Logged out`, besar kemungkinan IP server diblokir WA. Coba:
+  - Gunakan jaringan lain/VPN saat pairing
+  - Jalankan bot di host lain (contoh: VPS fight-dos dengan IP berbeda)
+  - Pastikan Node >= 20 (untuk Baileys WebCrypto)
 
 ### Step 1: Cari OWNER_JID Kamu
 

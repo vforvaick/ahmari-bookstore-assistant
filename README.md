@@ -18,3 +18,30 @@ WhatsApp bot untuk otomasi broadcast promosi buku dengan AI style rewriting.
 ## Architecture
 
 See `docs/plans/2025-11-28-whatsapp-bookstore-bot-design.md`
+
+## WhatsApp Authentication & Group JID
+
+- **Pairing code (recommended on server):**
+  - Set `PAIRING_PHONE` (digits only, e.g. `6285xxxx`) or ensure `OWNER_JID` is set.
+  - Run `npm run pair` inside `wa-bot` (or `docker exec bookstore-wa-bot node dist/pairing.js` after build).
+  - Open WhatsApp > Linked devices > Link with phone number, enter the code shown.
+- **List group JIDs (after logged in):**
+  - Run `npm run list:groups` inside `wa-bot` (or `docker exec bookstore-wa-bot node dist/listGroups.js`).
+  - Copy the desired JID and set `TARGET_GROUP_JID` in `.env`.
+
+## Deployment Notes (fight-dos host-mode)
+- IP fight-uno ditolak WA (401/Connection Failure). Gunakan VPS `fight-dos` (1c1g) untuk konek WA.
+- Di `fight-dos` (tanpa Docker):
+  ```
+  export PATH=$HOME/node-v20.18.0-linux-x64/bin:$PATH
+  cd ~/bot-wa-bookstore/wa-bot
+  # install deps sekali
+  node ~/node-v20.18.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js install
+  # jalankan bot
+  OWNER_JID=6285121080846@s.whatsapp.net \
+  TARGET_GROUP_JID=120363335057034362@g.us \
+  AI_PROCESSOR_URL=http://ai-processor:8000 \
+  npm run dev
+  ```
+- Sync sesi dari lokal (yang sudah login): `scp -r wa-bot/sessions fight-dos:~/bot-wa-bookstore/wa-bot/sessions`
+- Dokumen detail: `docs/DEPLOYMENT-NOTES.md`

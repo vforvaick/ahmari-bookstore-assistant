@@ -3,6 +3,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   WASocket,
   Browsers,
+  fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -23,6 +24,7 @@ export class WhatsAppClient {
   }
 
   async connect(): Promise<WASocket> {
+    const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(
       path.resolve(this.sessionsPath)
     );
@@ -32,6 +34,7 @@ export class WhatsAppClient {
       printQRInTerminal: false, // We'll handle QR display ourselves
       logger: pino({ level: 'warn' }),
       browser: Browsers.macOS('Desktop'),
+      version,
       getMessage: async (key) => {
         // Retrieve message from store if needed
         return { conversation: '' };
