@@ -1,10 +1,10 @@
-import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { detectFGBBroadcast, isOwnerMessage, DetectionResult } from './detector';
 import { AIClient } from './aiClient';
 import path from 'path';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
+import { loadBaileys, WASocket, proto } from './baileysLoader';
 
 const logger = pino({ level: 'info' });
 
@@ -13,7 +13,8 @@ export class MessageHandler {
     private sock: WASocket,
     private ownerJid: string,
     private aiClient: AIClient,
-    private mediaPath: string = './media'
+    private mediaPath: string = './media',
+    private baileysPromise = loadBaileys()
   ) {
     // Ensure media directory exists
     if (!fs.existsSync(mediaPath)) {
@@ -81,6 +82,7 @@ export class MessageHandler {
 
       // Download media
       if (detection.hasMedia && detection.mediaMessages.length > 0) {
+        const { downloadMediaMessage } = await this.baileysPromise;
         let mediaIndex = 0;
         for (const mediaMsg of detection.mediaMessages) {
           try {

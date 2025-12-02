@@ -4,19 +4,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MessageHandler = void 0;
-const baileys_1 = require("@whiskeysockets/baileys");
 const pino_1 = __importDefault(require("pino"));
 const detector_1 = require("./detector");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const fs_2 = require("fs");
+const baileysLoader_1 = require("./baileysLoader");
 const logger = (0, pino_1.default)({ level: 'info' });
 class MessageHandler {
-    constructor(sock, ownerJid, aiClient, mediaPath = './media') {
+    constructor(sock, ownerJid, aiClient, mediaPath = './media', baileysPromise = (0, baileysLoader_1.loadBaileys)()) {
         this.sock = sock;
         this.ownerJid = ownerJid;
         this.aiClient = aiClient;
         this.mediaPath = mediaPath;
+        this.baileysPromise = baileysPromise;
         // Ensure media directory exists
         if (!fs_1.default.existsSync(mediaPath)) {
             fs_1.default.mkdirSync(mediaPath, { recursive: true });
@@ -72,10 +73,11 @@ class MessageHandler {
             });
             // Download media
             if (detection.hasMedia && detection.mediaMessages.length > 0) {
+                const { downloadMediaMessage } = await this.baileysPromise;
                 let mediaIndex = 0;
                 for (const mediaMsg of detection.mediaMessages) {
                     try {
-                        const buffer = await (0, baileys_1.downloadMediaMessage)({ message: mediaMsg }, 'buffer', {});
+                        const buffer = await downloadMediaMessage({ message: mediaMsg }, 'buffer', {});
                         // Determine file extension from media type
                         let extension = 'bin';
                         if (mediaMsg.imageMessage) {

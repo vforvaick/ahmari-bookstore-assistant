@@ -1,14 +1,9 @@
 import { config } from 'dotenv';
-import makeWASocket, {
-  Browsers,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  useMultiFileAuthState,
-} from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import path from 'path';
+import { loadBaileys } from './baileysLoader';
 
 config();
 
@@ -16,14 +11,15 @@ const logger = pino({ level: 'info' });
 
 async function main() {
   const sessionsPath = path.resolve('./sessions');
-  const { state, saveCreds } = await useMultiFileAuthState(sessionsPath);
-  const { version } = await fetchLatestBaileysVersion();
+  const baileys = await loadBaileys();
+  const { state, saveCreds } = await baileys.useMultiFileAuthState(sessionsPath);
+  const { version } = await baileys.fetchLatestBaileysVersion();
 
-  const sock = makeWASocket({
+  const sock = baileys.default({
     auth: state,
     printQRInTerminal: false,
     logger: pino({ level: 'warn' }),
-    browser: Browsers.macOS('Desktop'),
+    browser: baileys.Browsers.macOS('Desktop'),
     version,
     getMessage: async () => ({ conversation: '' }),
   });
@@ -58,7 +54,7 @@ async function main() {
     if (connection === 'close') {
       const shouldReconnect =
         (lastDisconnect?.error as Boom)?.output?.statusCode !==
-        DisconnectReason.loggedOut;
+        baileys.DisconnectReason.loggedOut;
 
       logger.warn('Connection closed:', lastDisconnect?.error);
 

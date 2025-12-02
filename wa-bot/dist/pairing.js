@@ -1,57 +1,25 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = require("dotenv");
-const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const pino_1 = __importDefault(require("pino"));
 const qrcode_terminal_1 = __importDefault(require("qrcode-terminal"));
 const path_1 = __importDefault(require("path"));
+const baileysLoader_1 = require("./baileysLoader");
 (0, dotenv_1.config)();
 const logger = (0, pino_1.default)({ level: 'info' });
 async function main() {
     const sessionsPath = path_1.default.resolve('./sessions');
-    const { state, saveCreds } = await (0, baileys_1.useMultiFileAuthState)(sessionsPath);
-    const { version } = await (0, baileys_1.fetchLatestBaileysVersion)();
-    const sock = (0, baileys_1.default)({
+    const baileys = await (0, baileysLoader_1.loadBaileys)();
+    const { state, saveCreds } = await baileys.useMultiFileAuthState(sessionsPath);
+    const { version } = await baileys.fetchLatestBaileysVersion();
+    const sock = baileys.default({
         auth: state,
         printQRInTerminal: false,
         logger: (0, pino_1.default)({ level: 'warn' }),
-        browser: baileys_1.Browsers.macOS('Desktop'),
+        browser: baileys.Browsers.macOS('Desktop'),
         version,
         getMessage: async () => ({ conversation: '' }),
     });
@@ -68,7 +36,7 @@ async function main() {
         }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !==
-                baileys_1.DisconnectReason.loggedOut;
+                baileys.DisconnectReason.loggedOut;
             logger.warn('Connection closed:', lastDisconnect?.error);
             if (shouldReconnect) {
                 logger.info('Reconnecting...');

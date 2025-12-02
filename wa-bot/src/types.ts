@@ -1,4 +1,4 @@
-import { WASocket } from '@whiskeysockets/baileys';
+import type { WASocket } from './baileysLoader';
 
 export interface BotConfig {
   aiProcessorUrl: string;

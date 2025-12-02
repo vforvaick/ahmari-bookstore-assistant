@@ -1,16 +1,10 @@
-import makeWASocket, {
-  DisconnectReason,
-  useMultiFileAuthState,
-  WASocket,
-  Browsers,
-  fetchLatestBaileysVersion,
-} from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import path from 'path';
 import { MessageHandler } from './messageHandler';
 import type { AIClient } from './aiClient';
+import { loadBaileys, WASocket } from './baileysLoader';
 
 const logger = pino({ level: 'info' });
 
@@ -24,16 +18,17 @@ export class WhatsAppClient {
   }
 
   async connect(): Promise<WASocket> {
-    const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await useMultiFileAuthState(
+    const baileys = await loadBaileys();
+    const { version } = await baileys.fetchLatestBaileysVersion();
+    const { state, saveCreds } = await baileys.useMultiFileAuthState(
       path.resolve(this.sessionsPath)
     );
 
-    this.sock = makeWASocket({
+    this.sock = baileys.default({
       auth: state,
       printQRInTerminal: false, // We'll handle QR display ourselves
       logger: pino({ level: 'warn' }),
-      browser: Browsers.macOS('Desktop'),
+      browser: baileys.Browsers.macOS('Desktop'),
       version,
       getMessage: async (key) => {
         // Retrieve message from store if needed
@@ -58,7 +53,7 @@ export class WhatsAppClient {
       if (connection === 'close') {
         const shouldReconnect =
           (lastDisconnect?.error as Boom)?.output?.statusCode !==
-          DisconnectReason.loggedOut;
+          baileys.DisconnectReason.loggedOut;
 
         logger.warn('Connection closed:', lastDisconnect?.error);
 
