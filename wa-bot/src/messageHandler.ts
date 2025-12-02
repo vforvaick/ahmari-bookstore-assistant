@@ -67,9 +67,16 @@ export class MessageHandler {
     const mediaPaths: string[] = [];
 
     try {
-      // Send processing message
+      // Send processing message (friendly progress info)
       await this.sock.sendMessage(from, {
-        text: '⏳ Processing FGB broadcast...\n\n1. Downloading media\n2. Parsing data\n3. Generating draft',
+        text: [
+          '⏳ Lagi proses broadcast...',
+          '• Download media',
+          '• Parse konten',
+          '• Generate draft AI',
+          '',
+          'Mohon tunggu ±20-30 detik ya 🙏',
+        ].join('\n'),
       });
 
       // Download media
