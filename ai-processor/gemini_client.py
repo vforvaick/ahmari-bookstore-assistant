@@ -1,20 +1,31 @@
 import json
-import google.generativeai as genai
+import os
 from pathlib import Path
 from typing import Optional
+from openai import OpenAI
 from models import ParsedBroadcast
 
 class GeminiClient:
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         if api_key is None:
-            import os
             api_key = os.getenv('GEMINI_API_KEY')
+        
+        if base_url is None:
+            base_url = os.getenv('GEMINI_BASE_URL')
 
         if not api_key:
             raise ValueError("GEMINI_API_KEY is required")
 
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Initialize OpenAI client pointing to the proxy
+        # If base_url is not provided, it defaults to OpenAI's API (which won't work with this valid proxy key)
+        # So we should enforce it or default to a known proxy address if needed, but strict env is better.
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+        
+        # Default model to use with proxy (the proxy handles routing)
+        self.model_name = "gemini-2.0-flash-exp" 
 
         # Load style profile
         style_path = Path(__file__).parent / "config/style-profile.json"
@@ -107,16 +118,14 @@ Generate ONLY the broadcast message, no explanations or meta-commentary.
 
         prompt = self._build_prompt(parsed, user_edit)
 
-        generation_config = {
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 1024,
-        }
-
-        response = self.model.generate_content(
-            prompt,
-            generation_config=generation_config
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            top_p=0.95,
+            max_tokens=1024
         )
 
-        return response.text.strip()
+        return response.choices[0].message.content.strip()

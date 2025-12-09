@@ -8,6 +8,7 @@ services:
     container_name: bookstore-ai-processor
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_BASE_URL=${GEMINI_BASE_URL}
     volumes:
       - sqlite-data:/app/data
       - ./ai-processor/config:/app/config:ro
