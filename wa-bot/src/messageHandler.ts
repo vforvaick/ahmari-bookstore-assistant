@@ -6,7 +6,7 @@ import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import { loadBaileys, WASocket, proto } from './baileysLoader';
 
-const logger = pino({ level: 'info' });
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 export class MessageHandler {
   constructor(

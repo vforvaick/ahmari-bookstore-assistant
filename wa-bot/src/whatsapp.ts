@@ -6,7 +6,7 @@ import { MessageHandler } from './messageHandler';
 import type { AIClient } from './aiClient';
 import { loadBaileys, WASocket } from './baileysLoader';
 
-const logger = pino({ level: 'info' });
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 export class WhatsAppClient {
   private sock: WASocket | null = null;
@@ -30,7 +30,7 @@ export class WhatsAppClient {
     this.sock = baileys.default({
       auth: state,
       printQRInTerminal: false, // We'll handle QR display ourselves
-      logger: pino({ level: 'warn' }),
+      logger: pino({ level: process.env.LOG_LEVEL || 'warn' }),
       browser: baileys.Browsers.macOS('Desktop'),
       version,
       getMessage: async (key) => {
@@ -105,8 +105,19 @@ export class WhatsAppClient {
     // Listen for messages
     this.sock.ev.on('messages.upsert', async ({ messages }) => {
       for (const message of messages) {
-        // Ignore messages from self
-        if (message.key.fromMe) continue;
+        // Log incoming message for debugging
+        if (process.env.LOG_LEVEL === 'debug') {
+          logger.debug({
+            fromMe: message.key.fromMe,
+            remoteJid: message.key.remoteJid,
+            pushName: message.pushName
+          }, 'Incoming message');
+        }
+
+        // Ignore messages from self, UNLESS it's sent to self (Note to Self)
+        if (message.key.fromMe && message.key.remoteJid !== ownerJid) {
+          continue;
+        }
 
         // Handle message
         await this.messageHandler!.handleMessage(message);
