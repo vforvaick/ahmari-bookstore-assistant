@@ -88,3 +88,11 @@ CREATE TABLE IF NOT EXISTS style_profile (
 
 -- Insert default empty style profile
 INSERT OR IGNORE INTO style_profile (id, profile_data) VALUES (1, '{}');
+
+-- WhatsApp Baileys auth state (SQLite-based session)
+-- Stores authentication credentials and keys for WhatsApp connection
+-- More reliable than file-based storage, especially in Docker environments
+CREATE TABLE IF NOT EXISTS wa_auth_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

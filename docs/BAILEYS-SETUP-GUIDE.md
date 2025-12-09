@@ -438,21 +438,26 @@ docker exec bookstore-ai-processor env | grep GEMINI
 
 ---
 
-## 📁 File Structure Sessions
+## 📁 Session Storage (SQLite-based)
 
-**Baileys menyimpan auth state di folder `sessions/`:**
+**Baileys session sekarang disimpan di SQLite database:**
 
 ```
 sessions/
-├── creds.json          # Authentication credentials
-├── app-state-sync-key-*.json  # Sync keys
-└── pre-key-*.json      # Pre-keys untuk encryption
+└── session.db          # Single SQLite database containing all auth data
 ```
+
+**Keuntungan SQLite vs File-based:**
+- ✅ **Lebih stabil** - Tidak ada race condition dari ribuan file kecil
+- ✅ **Atomic operations** - Semua write operation dijamin konsisten
+- ✅ **Mudah backup** - Cukup copy satu file `session.db`
+- ✅ **Docker-friendly** - Tidak ada masalah permission/corruption saat volume mount
+- ✅ **Multi-session ready** - Bisa support multiple bot instances dengan database terpisah
 
 **PENTING:**
 - ❌ **JANGAN commit `sessions/` ke git** (sudah di .gitignore)
-- ❌ **JANGAN share `creds.json`** (rahasia!)
-- ✅ **Backup `sessions/` sebelum deploy ulang**
+- ❌ **JANGAN share `session.db`** (berisi credentials!)
+- ✅ **Backup `session.db` sebelum deploy ulang**
 
 **Kalau hilang:**
 - Bot harus scan QR ulang
@@ -479,14 +484,14 @@ wa-bot:
 ### View Sessions in Docker
 
 ```bash
-# List files in sessions volume
+# List files in sessions volume (should see session.db)
 docker run --rm -v bot-wa-bookstore_wa-sessions:/data alpine ls -la /data
 
-# Backup sessions
-docker run --rm -v bot-wa-bookstore_wa-sessions:/data -v $(pwd):/backup alpine tar czf /backup/sessions-backup.tar.gz -C /data .
+# Backup session database
+docker run --rm -v bot-wa-bookstore_wa-sessions:/data -v $(pwd):/backup alpine cp /data/session.db /backup/session-backup.db
 
-# Restore sessions
-docker run --rm -v bot-wa-bookstore_wa-sessions:/data -v $(pwd):/backup alpine tar xzf /backup/sessions-backup.tar.gz -C /data
+# Restore session database
+docker run --rm -v bot-wa-bookstore_wa-sessions:/data -v $(pwd):/backup alpine cp /backup/session-backup.db /data/session.db
 ```
 
 ---
@@ -495,10 +500,10 @@ docker run --rm -v bot-wa-bookstore_wa-sessions:/data -v $(pwd):/backup alpine t
 
 ### 1. Protect Sessions
 ```bash
-# Backup sessions securely
-tar czf sessions-backup.tar.gz sessions/
-gpg --encrypt --recipient your@email.com sessions-backup.tar.gz
-rm sessions-backup.tar.gz
+# Backup session database securely
+cp sessions/session.db session-backup.db
+gpg --encrypt --recipient your@email.com session-backup.db
+rm session-backup.db
 
 # Store encrypted backup safely
 ```

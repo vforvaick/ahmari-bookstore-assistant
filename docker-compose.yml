@@ -61,6 +61,23 @@ services:
     networks:
       - bookstore-net
 
+  telegram-bot:
+    build:
+      context: ./telegram-bot
+      dockerfile: Dockerfile
+    container_name: bookstore-telegram-bot
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_TARGET_CHAT_ID=${TELEGRAM_TARGET_CHAT_ID}
+      - PORT=3000
+    volumes:
+      - media:/app/media
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    networks:
+      - bookstore-net
+
 volumes:
   wa-sessions:
     driver: local

@@ -17,7 +17,14 @@ WhatsApp bot untuk otomasi broadcast promosi buku dengan AI style rewriting.
 
 ## Architecture
 
-See `docs/plans/2025-11-28-whatsapp-bookstore-bot-design.md`
+See [Architecture Documentation](docs/architecture.md)
+
+## Documentation
+
+- [Roadmap](docs/ROADMAP.md) - Planned features and known issues.
+- [Changelog](docs/CHANGELOG.md) - History of changes.
+- [Deployment Notes](docs/DEPLOYMENT-NOTES.md) - Specifics for fight-dos VPS.
+
 
 ## WhatsApp Authentication & Group JID
 

@@ -1,0 +1,138 @@
+# System Architecture
+
+## Overview
+Bot WhatsApp Bookstore is an automated system that receives promotional broadcasts from suppliers (FGB) in English, converts them into Indonesian promotional broadcasts with a personal writing style (dr. Findania) using Google Gemini AI, and sends them to the Ahmari Bookstore WhatsApp group.
+
+## High-Level Architecture
+
+```mermaid
+graph TD
+    User([User / Istri]) -->|Forward Broadcast| WABot[WA Bot Service]
+    WABot -->|Text + Media| AI[AI Processor API]
+    AI -->|Parsed Data| Parser[Parser Logic]
+    AI -->|Draft| Gemini[Google Gemini AI]
+    AI -->|Draft Response| WABot
+    
+    WABot -->|Approval Request| User
+    User -->|YES/EDIT/SCHEDULE| WABot
+    
+    WABot -->|Job Payload| Scheduler[Queue Scheduler]
+    Scheduler -->|Cron Trigger| WABot
+    
+    WABot -->|Persist| DB[(SQLite Database)]
+    Scheduler -->|Read Queue| DB
+    
+    WABot -->|Final Broadcast| Group([WhatsApp Group])
+    
+    Scheduler -->|Trigger Broadcast| Telegram[Telegram Bot Service]
+    Telegram -->|Send| TGChannel([Telegram Channel])
+```
+
+## Core Components
+
+### 1. WhatsApp Bot Service (Node.js + Baileys)
+- **Role**: WhatsApp connection handler, message interception, and user interaction.
+- **Responsibilities**:
+  - Maintains WhatsApp connection via Baileys.
+  - Detects forwarded FGB broadcasts using regex patterns.
+  - Handles interactive conversation flow (YES / EDIT DULU / SCHEDULE).
+  - Executes final broadcasts to target groups.
+  - Manages conversation state.
+
+### 2. AI Processor Service (Python + FastAPI)
+- **Role**: Logic core for parsing and style rewriting.
+- **Responsibilities**:
+  - Parses raw broadcast text using flexible YAML-based rules.
+  - integrating with Google Gemini API for style rewriting.
+  - Extracts style patterns from chat history.
+  - Provides REST API endpoints for the WA Bot.
+
+### 3. Queue Scheduler Service (Node.js)
+- **Role**: Timer-based job runner.
+- **Responsibilities**:
+  - Processes the broadcast queue.
+  - Enforces a 47-minute anti-spam interval between broadcasts.
+  - Handles retries and status updates.
+
+### 4. Telegram Bot Service (Node.js + Telegraf)
+- **Role**: Secondary broadcast channel.
+- **Responsibilities**:
+  - Exposes HTTP API for Scheduler.
+  - Broadcasts messages and media to a configured Telegram Target.
+
+## Data Schema (SQLite)
+
+### Broadcasts Table
+Permanent storage for all processed broadcasts.
+```sql
+CREATE TABLE broadcasts (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  title_en TEXT,
+  price_main INTEGER,
+  price_secondary INTEGER,
+  format TEXT,                 -- HB, PB, BB
+  eta TEXT,                    -- "Apr '26"
+  close_date TEXT,             -- "20 Des"
+  type TEXT,                   -- Remainder or Request
+  min_order TEXT,
+  description_en TEXT,
+  description_id TEXT,         -- Indonesian translation
+  tags TEXT,                   -- JSON: ["New Oct", "NETT"]
+  preview_links TEXT,          -- JSON array
+  media_paths TEXT,            -- JSON array
+  separator_emoji TEXT,        -- 🌳 or 🦊
+  status TEXT,                 -- approved, scheduled, sent
+  created_at DATETIME,
+  sent_at DATETIME
+);
+```
+
+### Queue Table
+Manages scheduled jobs.
+```sql
+CREATE TABLE queue (
+  id INTEGER PRIMARY KEY,
+  broadcast_id INTEGER,
+  scheduled_time DATETIME,
+  status TEXT,                 -- pending, sent, failed
+  retry_count INTEGER DEFAULT 0,
+  FOREIGN KEY(broadcast_id) REFERENCES broadcasts(id)
+);
+```
+
+### Conversation State
+Tracks user interaction flow.
+```sql
+CREATE TABLE conversation_state (
+  user_id TEXT PRIMARY KEY,
+  message_id TEXT,
+  status TEXT,                 -- awaiting_choice, awaiting_edit
+  draft_text TEXT,
+  original_media TEXT,         -- JSON array
+  edited_text TEXT,
+  created_at DATETIME
+);
+```
+
+### WhatsApp Auth State
+Stores Baileys authentication credentials and keys in SQLite for improved reliability.
+```sql
+CREATE TABLE wa_auth_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL           -- JSON-serialized auth data
+);
+```
+
+### Full-Text Search
+```sql
+CREATE VIRTUAL TABLE broadcasts_fts USING fts5(
+  title, description_en, description_id, tags
+);
+```
+
+## Infrastructure
+- **Containerization**: All services are Dockerized.
+- **Orchestration**: Docker Compose manages the 3 services.
+- **Volumes**: Shared volumes for SQLite data, Media files, and WhatsApp sessions.
+- **Environment**: Deployed on VPS (Oracle Cloud).

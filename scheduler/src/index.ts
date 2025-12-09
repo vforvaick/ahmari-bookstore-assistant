@@ -19,6 +19,8 @@ interface QueuedBroadcast {
   title: string;
   status: string;
   scheduled_time: string;
+  media_paths?: string; // JSON string
+  description_id?: string;
 }
 
 class QueueScheduler {
@@ -80,6 +82,39 @@ class QueueScheduler {
       }
 
       logger.info(`Processing queued broadcast: ${next.title} (ID: ${next.id})`);
+
+      // Trigger Telegram Broadcast
+      try {
+        let mediaPaths: string[] = [];
+        if (next.media_paths) {
+          try {
+            mediaPaths = JSON.parse(next.media_paths);
+          } catch (e) {
+            logger.warn('Failed to parse media_paths JSON', e);
+          }
+        }
+
+        const telegramPayload = {
+          text: next.description_id || next.title,
+          media: mediaPaths
+        };
+
+        logger.info(`Sending to Telegram...`);
+        const response = await fetch('http://telegram-bot:3000/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(telegramPayload)
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          logger.error(`Failed to send to Telegram: ${response.status} ${errText}`);
+        } else {
+          logger.info('✓ Sent to Telegram successfully');
+        }
+      } catch (error) {
+        logger.error('Error calling Telegram Bot service:', error);
+      }
 
       // TODO: Send broadcast to WhatsApp group
       // For now, just mark as sent

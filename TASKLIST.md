@@ -1,5 +1,8 @@
 # WhatsApp Bookstore Bot - Task Checklist
 
+> **⚠️ DEPRECATED:** This file is legacy. Please refer to [docs/ROADMAP.md](docs/ROADMAP.md) for the active roadmap and [docs/CHANGELOG.md](docs/CHANGELOG.md) for history.
+
+
 > Last Updated: 2025-11-28
 > Status: **Core MVP Complete** ✅
 

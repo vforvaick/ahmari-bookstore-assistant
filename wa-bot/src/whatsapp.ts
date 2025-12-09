@@ -20,8 +20,11 @@ export class WhatsAppClient {
   async connect(): Promise<WASocket> {
     const baileys = await loadBaileys();
     const { version } = await baileys.fetchLatestBaileysVersion();
-    const { state, saveCreds } = await baileys.useMultiFileAuthState(
-      path.resolve(this.sessionsPath)
+
+    // Use SQLite-based auth state for better reliability
+    const { useSqliteAuthState } = await import('./sqliteAuthState');
+    const { state, saveCreds } = await useSqliteAuthState(
+      path.resolve(this.sessionsPath, 'session.db')
     );
 
     this.sock = baileys.default({
