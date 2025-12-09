@@ -14,7 +14,7 @@ class GeminiClient:
             raise ValueError("GEMINI_API_KEY is required")
 
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-1.5-flash-001')
 
         # Load style profile
         style_path = Path(__file__).parent / "config/style-profile.json"
