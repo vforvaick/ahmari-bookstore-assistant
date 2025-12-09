@@ -1,36 +1,81 @@
+"""
+GeminiClient with Round-Robin API Key Rotation
+
+Supports multiple Gemini API keys for load balancing and quota management.
+Keys are rotated in round-robin fashion to distribute load evenly.
+"""
+
 import json
 import os
+import threading
+import google.generativeai as genai
 from pathlib import Path
-from typing import Optional
-from openai import OpenAI
+from typing import Optional, List
 from models import ParsedBroadcast
 
+
 class GeminiClient:
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        if api_key is None:
-            api_key = os.getenv('GEMINI_API_KEY')
+    """
+    Gemini API client with built-in round-robin key rotation.
+    
+    Environment Variables:
+        GEMINI_API_KEYS: Comma-separated list of API keys (preferred)
+        GEMINI_API_KEY: Single API key (fallback)
+    """
+    
+    # Class-level counter for round-robin (shared across instances)
+    _request_counter = 0
+    _counter_lock = threading.Lock()
+    
+    def __init__(self, api_keys: Optional[List[str]] = None):
+        """
+        Initialize client with one or more API keys.
         
-        if base_url is None:
-            base_url = os.getenv('GEMINI_BASE_URL')
-
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is required")
-
-        # Initialize OpenAI client pointing to the proxy
-        # If base_url is not provided, it defaults to OpenAI's API (which won't work with this valid proxy key)
-        # So we should enforce it or default to a known proxy address if needed, but strict env is better.
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url
-        )
+        Args:
+            api_keys: List of API keys. If None, reads from environment.
+        """
+        if api_keys is None:
+            # Try comma-separated keys first, then single key
+            keys_str = os.getenv('GEMINI_API_KEYS', '')
+            if keys_str:
+                api_keys = [k.strip() for k in keys_str.split(',') if k.strip()]
+            else:
+                single_key = os.getenv('GEMINI_API_KEY', '')
+                api_keys = [single_key] if single_key else []
         
-        # Default model to use with proxy (the proxy handles routing)
-        self.model_name = "gemini-2.0-flash-exp" 
-
+        if not api_keys:
+            raise ValueError("At least one GEMINI_API_KEY is required")
+        
+        self.api_keys = api_keys
+        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp')
+        
         # Load style profile
         style_path = Path(__file__).parent / "config/style-profile.json"
         with open(style_path, 'r', encoding='utf-8') as f:
             self.style_profile = json.load(f)
+    
+    def _get_next_key(self) -> str:
+        """
+        Get the next API key using thread-safe round-robin.
+        
+        Returns:
+            The next API key in rotation.
+        """
+        with self._counter_lock:
+            key = self.api_keys[self._request_counter % len(self.api_keys)]
+            GeminiClient._request_counter += 1
+        return key
+    
+    def _get_model(self) -> genai.GenerativeModel:
+        """
+        Get a GenerativeModel configured with the next API key.
+        
+        Returns:
+            Configured GenerativeModel instance.
+        """
+        api_key = self._get_next_key()
+        genai.configure(api_key=api_key)
+        return genai.GenerativeModel(self.model_name)
 
     def _build_prompt(self, parsed: ParsedBroadcast, user_edit: Optional[str] = None) -> str:
         """Build prompt for Gemini"""
@@ -114,18 +159,33 @@ Generate ONLY the broadcast message, no explanations or meta-commentary.
         parsed: ParsedBroadcast,
         user_edit: Optional[str] = None
     ) -> str:
-        """Generate Indonesian broadcast from parsed data"""
-
+        """
+        Generate Indonesian broadcast from parsed data.
+        
+        Uses round-robin key rotation automatically.
+        
+        Args:
+            parsed: ParsedBroadcast object with book information.
+            user_edit: Optional user edit request.
+            
+        Returns:
+            Generated broadcast message.
+        """
         prompt = self._build_prompt(parsed, user_edit)
+        
+        # Get model with next API key in rotation
+        model = self._get_model()
 
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            top_p=0.95,
-            max_tokens=1024
+        generation_config = {
+            "temperature": 0.7,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 1024,
+        }
+
+        response = model.generate_content(
+            prompt,
+            generation_config=generation_config
         )
 
-        return response.choices[0].message.content.strip()
+        return response.text.strip()
