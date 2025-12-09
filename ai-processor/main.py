@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
-    gemini_api_key: str
+    gemini_api_keys: Optional[str] = None  # Comma-separated API keys
 
     model_config = ConfigDict(env_file=".env")
 
@@ -32,7 +32,7 @@ app.add_middleware(
 
 # Initialize services
 parser = FGBParser()
-gemini_client = GeminiClient(api_key=settings.gemini_api_key)
+gemini_client = GeminiClient()  # Reads API keys from environment
 
 class ParseRequest(BaseModel):
     text: str
