@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     gemini_api_keys: Optional[str] = None  # Comma-separated API keys
 
-    model_config = ConfigDict(env_file=".env")
+    model_config = ConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
 app = FastAPI(title="AI Processor", version="1.0.0")
