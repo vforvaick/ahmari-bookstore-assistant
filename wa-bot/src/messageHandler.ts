@@ -9,13 +9,17 @@ import { loadBaileys, WASocket, proto } from './baileysLoader';
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 export class MessageHandler {
+  private ownerJids: string[];
+
   constructor(
     private sock: WASocket,
-    private ownerJid: string,
+    ownerJidOrList: string | string[],
     private aiClient: AIClient,
     private mediaPath: string = './media',
     private baileysPromise = loadBaileys()
   ) {
+    this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
+
     // Ensure media directory exists
     if (!fs.existsSync(mediaPath)) {
       fs.mkdirSync(mediaPath, { recursive: true });
@@ -31,7 +35,8 @@ export class MessageHandler {
         return;
       }
 
-      const isFromOwner = isOwnerMessage(from, this.ownerJid);
+      // Check if sender is one of the owners (phone or LID)
+      const isFromOwner = this.ownerJids.includes(from);
 
       // Only process messages from owner (istri)
       if (!isFromOwner) {

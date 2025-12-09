@@ -95,9 +95,15 @@ export class WhatsAppClient {
       throw new Error('Socket not connected');
     }
 
+    // Determine all valid owner JIDs (Phone + optional LID)
+    const ownerJids = [ownerJid];
+    if (process.env.OWNER_LID) {
+      ownerJids.push(process.env.OWNER_LID);
+    }
+
     this.messageHandler = new MessageHandler(
       this.sock,
-      ownerJid,
+      ownerJids,
       aiClient,
       mediaPath
     );
@@ -115,8 +121,12 @@ export class WhatsAppClient {
         }
 
         // Ignore messages from self, UNLESS it's sent to self (Note to Self)
-        if (message.key.fromMe && message.key.remoteJid !== ownerJid) {
-          continue;
+        // We check if the remoteJid (recipient/sender context) matches any of our owner identities
+        if (message.key.fromMe) {
+          const isNoteToSelf = message.key.remoteJid && ownerJids.includes(message.key.remoteJid);
+          if (!isNoteToSelf) {
+            continue;
+          }
         }
 
         // Handle message
