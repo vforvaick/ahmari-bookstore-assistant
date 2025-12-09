@@ -33,6 +33,7 @@ services:
       - DATABASE_PATH=/app/data/bookstore.db
       - OWNER_JID=${OWNER_JID}
       - TARGET_GROUP_JID=${TARGET_GROUP_JID}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./wa-bot/sessions:/app/sessions
       - sqlite-data:/app/data
