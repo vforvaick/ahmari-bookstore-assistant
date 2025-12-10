@@ -1,26 +1,32 @@
 """
-GeminiClient with Round-Robin API Key Rotation
+GeminiClient with Round-Robin API Key Rotation and Fallback
 
 Supports multiple Gemini API keys for load balancing and quota management.
-Keys are rotated in round-robin fashion to distribute load evenly.
+Keys are rotated in round-robin fashion, with automatic fallback to next key
+on quota errors (429).
 """
 
 import json
 import os
 import threading
+import logging
 import google.generativeai as genai
+from google.api_core import exceptions as google_exceptions
 from pathlib import Path
 from typing import Optional, List
 from models import ParsedBroadcast
 
+logger = logging.getLogger(__name__)
+
 
 class GeminiClient:
     """
-    Gemini API client with built-in round-robin key rotation.
+    Gemini API client with built-in round-robin key rotation and fallback.
     
     Environment Variables:
         GEMINI_API_KEYS: Comma-separated list of API keys (preferred)
         GEMINI_API_KEY: Single API key (fallback)
+        GEMINI_MODEL: Model to use (default: gemini-1.5-flash)
     """
     
     # Class-level counter for round-robin (shared across instances)
@@ -47,33 +53,37 @@ class GeminiClient:
             raise ValueError("At least one GEMINI_API_KEY is required")
         
         self.api_keys = api_keys
-        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash-exp')
+        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+        
+        logger.info(f"GeminiClient initialized with {len(self.api_keys)} API keys, model: {self.model_name}")
         
         # Load style profile
         style_path = Path(__file__).parent / "config/style-profile.json"
         with open(style_path, 'r', encoding='utf-8') as f:
             self.style_profile = json.load(f)
     
-    def _get_next_key(self) -> str:
+    def _get_next_key_index(self) -> int:
         """
-        Get the next API key using thread-safe round-robin.
+        Get the next API key index using thread-safe round-robin.
         
         Returns:
-            The next API key in rotation.
+            Index of the next API key.
         """
         with self._counter_lock:
-            key = self.api_keys[self._request_counter % len(self.api_keys)]
+            index = self._request_counter % len(self.api_keys)
             GeminiClient._request_counter += 1
-        return key
+        return index
     
-    def _get_model(self) -> genai.GenerativeModel:
+    def _get_model_with_key(self, api_key: str) -> genai.GenerativeModel:
         """
-        Get a GenerativeModel configured with the next API key.
+        Get a GenerativeModel configured with a specific API key.
         
+        Args:
+            api_key: The API key to use.
+            
         Returns:
             Configured GenerativeModel instance.
         """
-        api_key = self._get_next_key()
         genai.configure(api_key=api_key)
         return genai.GenerativeModel(self.model_name)
 
@@ -162,7 +172,8 @@ Generate ONLY the broadcast message, no explanations or meta-commentary.
         """
         Generate Indonesian broadcast from parsed data.
         
-        Uses round-robin key rotation automatically.
+        Uses round-robin key rotation with automatic fallback on quota errors.
+        If a key fails with 429 (quota exceeded), tries the next key.
         
         Args:
             parsed: ParsedBroadcast object with book information.
@@ -170,22 +181,59 @@ Generate ONLY the broadcast message, no explanations or meta-commentary.
             
         Returns:
             Generated broadcast message.
+            
+        Raises:
+            Exception: If all keys fail.
         """
         prompt = self._build_prompt(parsed, user_edit)
         
-        # Get model with next API key in rotation
-        model = self._get_model()
-
         generation_config = {
             "temperature": 0.7,
             "top_p": 0.95,
             "top_k": 40,
             "max_output_tokens": 1024,
         }
-
-        response = model.generate_content(
-            prompt,
-            generation_config=generation_config
-        )
-
-        return response.text.strip()
+        
+        # Get starting index for round-robin
+        start_index = self._get_next_key_index()
+        last_error = None
+        
+        # Try each key until one succeeds
+        for i in range(len(self.api_keys)):
+            key_index = (start_index + i) % len(self.api_keys)
+            api_key = self.api_keys[key_index]
+            key_suffix = api_key[-6:] if len(api_key) > 6 else api_key  # Last 6 chars for logging
+            
+            try:
+                logger.info(f"Trying API key ...{key_suffix} (attempt {i+1}/{len(self.api_keys)})")
+                
+                model = self._get_model_with_key(api_key)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=generation_config
+                )
+                
+                logger.info(f"Success with API key ...{key_suffix}")
+                return response.text.strip()
+                
+            except google_exceptions.ResourceExhausted as e:
+                # 429 - Quota exceeded, try next key
+                logger.warning(f"API key ...{key_suffix} quota exceeded (429), trying next key...")
+                last_error = e
+                continue
+                
+            except Exception as e:
+                # Other errors - log but still try next key
+                error_str = str(e)
+                if "429" in error_str or "quota" in error_str.lower():
+                    logger.warning(f"API key ...{key_suffix} quota error, trying next key...")
+                    last_error = e
+                    continue
+                else:
+                    # For non-quota errors, raise immediately
+                    logger.error(f"API key ...{key_suffix} failed with non-quota error: {e}")
+                    raise
+        
+        # All keys failed
+        logger.error(f"All {len(self.api_keys)} API keys exhausted. Last error: {last_error}")
+        raise Exception(f"All API keys quota exceeded. Please wait for quota reset or upgrade plan. Last error: {last_error}")
