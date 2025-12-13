@@ -1,4 +1,7 @@
 import type { proto } from '@whiskeysockets/baileys';
+import pino from 'pino';
+
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 export interface DetectionResult {
   isFGBBroadcast: boolean;
@@ -14,6 +17,7 @@ const FGB_PATTERNS = [
   /Min\.\s*\d+\s*pcs/i,
   /NETT\s+PRICE/i,
   /(🌳{2,}|🦊{2,})/,
+  /🏷️\s*Rp/i,  // Price tag emoji with Rp
 ];
 
 export function detectFGBBroadcast(message: proto.IWebMessageInfo): DetectionResult {
@@ -27,32 +31,104 @@ export function detectFGBBroadcast(message: proto.IWebMessageInfo): DetectionRes
 
   // Extract text from message
   const messageContent = message.message;
-  if (!messageContent) return result;
+  if (!messageContent) {
+    logger.debug('No message content found');
+    return result;
+  }
 
-  // Check for text content
-  const textContent =
+  // Log message structure for debugging
+  const messageTypes = Object.keys(messageContent);
+  logger.debug({ messageTypes }, 'Message content types');
+
+  // Check for text content from various message types
+  let textContent =
     messageContent.conversation ||
     messageContent.extendedTextMessage?.text ||
     messageContent.imageMessage?.caption ||
     messageContent.videoMessage?.caption ||
     '';
 
+  // Handle forwarded messages - check contextInfo for forwarded content
+  if (messageContent.extendedTextMessage?.contextInfo?.quotedMessage) {
+    const quoted = messageContent.extendedTextMessage.contextInfo.quotedMessage;
+    const quotedText = quoted.conversation ||
+      quoted.extendedTextMessage?.text ||
+      quoted.imageMessage?.caption ||
+      quoted.videoMessage?.caption || '';
+    
+    if (quotedText && !textContent) {
+      textContent = quotedText;
+    }
+    
+    // Check if quoted message has media
+    if (quoted.imageMessage || quoted.videoMessage) {
+      result.hasMedia = true;
+      result.mediaCount++;
+      result.mediaMessages.push(quoted);
+    }
+  }
+
+  // Check for forwarded image/video with caption
+  if (messageContent.imageMessage) {
+    result.hasMedia = true;
+    result.mediaCount++;
+    result.mediaMessages.push(messageContent);
+    if (messageContent.imageMessage.caption) {
+      textContent = messageContent.imageMessage.caption;
+    }
+  }
+  
+  if (messageContent.videoMessage) {
+    result.hasMedia = true;
+    result.mediaCount++;
+    result.mediaMessages.push(messageContent);
+    if (messageContent.videoMessage.caption) {
+      textContent = messageContent.videoMessage.caption;
+    }
+  }
+
+  // Handle viewOnceMessageV2 (disappearing media)
+  if (messageContent.viewOnceMessageV2?.message) {
+    const viewOnce = messageContent.viewOnceMessageV2.message;
+    if (viewOnce.imageMessage) {
+      result.hasMedia = true;
+      result.mediaCount++;
+      result.mediaMessages.push(viewOnce);
+      if (viewOnce.imageMessage.caption) {
+        textContent = viewOnce.imageMessage.caption;
+      }
+    }
+  }
+
   result.text = textContent;
 
-  // Check for media (images, videos, etc.)
-  if (messageContent.imageMessage || messageContent.videoMessage) {
-    result.hasMedia = true;
-    result.mediaCount = 1;
-    result.mediaMessages.push(message.message!);
-  }
+  // Log detection info
+  logger.debug({
+    textLength: textContent.length,
+    textPreview: textContent.substring(0, 100),
+    hasMedia: result.hasMedia,
+    mediaCount: result.mediaCount,
+  }, 'Detection analysis');
 
   // Check if matches FGB patterns
   if (textContent) {
-    const hasPattern = FGB_PATTERNS.some((pattern) => pattern.test(textContent));
+    const matchedPatterns = FGB_PATTERNS.filter(pattern => pattern.test(textContent));
+    const hasPattern = matchedPatterns.length > 0;
 
-    // Must have pattern match AND media to be considered FGB broadcast
-    if (hasPattern && result.hasMedia) {
+    logger.debug({
+      hasPattern,
+      matchedCount: matchedPatterns.length,
+    }, 'Pattern matching result');
+
+    // For FGB broadcast detection:
+    // - Must have pattern match
+    // - Media is optional (some broadcasts are text-only with link)
+    if (hasPattern) {
       result.isFGBBroadcast = true;
+      logger.info({
+        title: textContent.match(/\*([^*]+)\*/)?.[1] || 'Unknown',
+        hasMedia: result.hasMedia,
+      }, 'FGB broadcast detected');
     }
   }
 
@@ -60,5 +136,7 @@ export function detectFGBBroadcast(message: proto.IWebMessageInfo): DetectionRes
 }
 
 export function isOwnerMessage(from: string, ownerJid: string): boolean {
-  return from === ownerJid;
+  // Also check direct equality for safety
+  if (from === ownerJid) return true;
+  return false;
 }
