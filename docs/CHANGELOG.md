@@ -38,6 +38,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Default Model**: Changed from `gemini-2.0-flash-exp` to `gemini-2.5-flash`
 - **Error Handling**: Added detailed traceback logging in `/generate` endpoint
+- **AI Generation Style**: Refined prompt with Few-Shot examples from chat history for more authentic "Istri" persona.
 
 ### Files Modified
 - `ai-processor/gemini_client.py` (rebuilt with improved logging)

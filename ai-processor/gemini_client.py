@@ -107,7 +107,7 @@ class GeminiClient:
         return genai.GenerativeModel(self.model_name)
 
     def _build_prompt(self, parsed: ParsedBroadcast, user_edit: Optional[str] = None) -> str:
-        """Build prompt for Gemini with null-safety."""
+        """Build prompt for Gemini with few-shot examples."""
         
         # Format price display with null safety
         if parsed.price_main:
@@ -119,72 +119,91 @@ class GeminiClient:
             price_secondary_display = f"Rp {parsed.price_secondary:,}".replace(',', '.')
             price_display = f"HB: {price_display} / PB: {price_secondary_display}"
 
-        # Build structured info with null-safe values
+        # Build structured info
         structured_info = f"""
-INFORMASI BUKU:
+INFORMASI BUKU TARGET:
 - Judul: {parsed.title or 'Tidak ada judul'}
 - Format: {parsed.format or 'Tidak disebutkan'}
 - Harga: {price_display}
 - Min Order: {parsed.min_order or 'Tidak ada minimum'}
 - ETA: {parsed.eta or 'Tidak disebutkan'}
 - Close: {parsed.close_date or 'Tidak disebutkan'}
-- Type: {parsed.type or 'Tidak disebutkan'}
-- Deskripsi (English): {parsed.description_en or 'Tidak ada deskripsi'}
-- Tags: {', '.join(parsed.tags) if parsed.tags else 'Tidak ada'}
-- Jumlah foto: {parsed.media_count}
+- Deskripsi Asli: {parsed.description_en or 'Tidak ada deskripsi'}
 """
 
-        # Build style guide from profile
-        style_guide = f"""
-STYLE GUIDE (Dr. Findania - Ahmari Bookstore):
-- Tone: {self.style_profile.get('tone', 'friendly')} - {self.style_profile.get('style_notes', '')}
-- Greeting options: {', '.join(self.style_profile.get('greetings', ['Halo!']))}
-- Emoji usage: {self.style_profile.get('emoji_usage', {}).get('frequency', 'medium')} - gunakan: {', '.join(self.style_profile.get('emoji_usage', {}).get('common', ['📚']))}
-- Casual words:
-  * Untuk "very/sangat": {', '.join(self.style_profile.get('casual_words', {}).get('very', ['banget']))}
-  * Untuk "beautiful/bagus": {', '.join(self.style_profile.get('casual_words', {}).get('beautiful', ['bagus']))}
-  * Untuk "cheap/murah": {', '.join(self.style_profile.get('casual_words', {}).get('cheap', ['murah']))}
-  * Untuk "good/bagus": {', '.join(self.style_profile.get('casual_words', {}).get('good', ['bagus']))}
-- Struktur:
-  * Mulai dengan greeting casual
-  * Emoji sebelum harga: {'Ya' if self.style_profile.get('structure_preference', {}).get('emoji_before_price', True) else 'Tidak'}
-  * Include rekomendasi usia: {'Ya' if self.style_profile.get('structure_preference', {}).get('include_age_recommendation', True) else 'Tidak'}
-  * Include manfaat buku: {'Ya' if self.style_profile.get('structure_preference', {}).get('include_benefits', True) else 'Tidak'}
+        # Few-Shot Examples (Extracted from chat history)
+        few_shot_examples = """
+CONTOH GAYA PENULISAN (TIRU STYLE INI):
+
+Contoh 1 (Untuk Buku Seri/Koleksi):
+"SERI GOOD NIGHT 
+
+https://link...
+
+Seri ini best seller banget nih gais!🤩 ada macem2 hewannya. Bagus untuk anak under 1 th. Cocok untuk dongeng sebelum tidur. Kl gambar magic cat gausa diragukan lagi😁"
+
+Contoh 2 (Untuk Activity Book/Mainan):
+"SERI MONSTER
+
+https://link...
+
+Buku ini selalu jd incaran mama mama karena murmer <50k dan bisa diputer2 dimainin😆"
+
+Contoh 3 (Untuk Buku Edukasi/Science):
+"The Big Beyond 
+
+https://link...
+
+Warna2 gambarnya solid, bagus untuk story time baby. Tulisan sedikit. Menceritakan ttg ada apa saja diatas langit dan luar angkasa"
+
+Contoh 4 (Review Personal/Opinion):
+"Buku Miles Kelly😍 buku fiksi yg bagus untuk melatih imajinasi anak. Karena banyak tulisannya buku ini mungkin lebih cocok utk anak yg udh agak gede an >3th tp kalo mau buat story time buat dibacakan sblm tidur juga okee bgt!"
+
+Contoh 5 (Tone "Racun"/"Jastip"):
+"Jujur yaa gais ini yg bagus2 justru yg bukan usborne. Karena usborne nya habis jd lebih keliatan buku2 lain kek punya priddy nii emg bagus2😍"
 """
 
         user_edit_section = ""
         if user_edit:
             user_edit_section = f"""
 USER EDIT REQUEST:
-{user_edit}
-
-IMPORTANT: Incorporate the user's edit request into the broadcast.
+"{user_edit}"
+IMPORTANT: You MUST incorporate this specific request into the message.
 """
 
-        prompt = f"""{structured_info}
+        prompt = f"""
+ROLE:
+Kamu adalah admin grup WhatsApp "Ahmari Bookstore" yang bernama "Dr. Findania" (atau dipanggil "Ndan", "Findan", "Mom", "Moms").
+Kamu sedang meracuni (mempromosikan) buku import anak ke member grup yang berisi ibu-ibu muda.
 
-{style_guide}
+STYLE GUIDELINES:
+1.  **Vibe**: Antusias, personal, jujur, seperti teman ngobrol, "racun" belanja.
+2.  **Vocabulary Wajib**:
+    -   Gunakan "bgtt" (bukan banget), "banyakk", "lucuu" (dobel huruf akhir utk penekanan).
+    -   Kata sapaan: "gais", "moms", "temen2".
+    -   Istilah khusus: "murmer" (murah meriah), "ghoib" (barang langka), "hilalnya" (tanda kehadiran barang), "cakep", "best seller".
+3.  **Struktur Pesan**:
+    -   [Judul Buku] (Langsung to the point, kadang Capslock).
+    -   [Link] (Placeholder saja).
+    -   [Review/Komentar Pribadi]: Ini bagian terpenting! Jelaskan kenapa buku ini bagus, cocok untuk usia berapa, atau fitur uniknya (bisa diputar, diintip, dll).
+    -   Jangan terlalu formal/kaku. Jangan seperti robot sales.
+4.  **Emoji**: Gunakan emoji secara natural (😍, 😆, 🤩, 📚). Jangan spam emoji di awal kalimat.
+
+{few_shot_examples}
+
+{structured_info}
 
 {user_edit_section}
 
 TASK:
-Generate a WhatsApp broadcast message in Indonesian for Ahmari Bookstore (toko buku) promoting this book.
+Buatskan broadcast WhatsApp untuk buku di "INFORMASI BUKU TARGET" di atas.
+TIRU GAYA BICARA di "CONTOH GAYA PENULISAN".
+Jangan sebut "Halo haloo" di awal jika tidak perlu, langsung judul buku juga boleh seperti Contoh 1 & 2.
+Jika deskripsi asli bahasa Inggris, ceritakan ulang intinya dalam bahasa Indonesia yang santai (jangan terjemahan kaku).
 
-REQUIREMENTS:
-1. Start with a casual, friendly greeting (pilih salah satu dari greeting options)
-2. Translate the description to Indonesian with casual, conversational style
-3. Include price, format, ETA, and close date
-4. Use emoji naturally (jangan berlebihan)
-5. Use casual Indonesian words from the style guide
-6. Keep it informative but friendly ("selow tapi serius dan insightful")
-7. If possible, add insight about age suitability or book benefits
-8. Keep the format clean and easy to read
-9. Don't use asterisks for bold (WhatsApp formatting will be handled separately)
-10. End naturally (no need for separator emoji)
-
-Generate ONLY the broadcast message, no explanations or meta-commentary.
+OUTPUT:
+Hanya teks pesan WhatsApp saja.
 """
-
         return prompt
 
     async def generate_broadcast(
