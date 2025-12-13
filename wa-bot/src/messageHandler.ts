@@ -62,9 +62,16 @@ export class MessageHandler {
 
       logger.info(`Processing message from owner: ${from}`);
 
-      // Check for YES/SCHEDULE response first
+      // Extract message text
       const messageText = this.extractMessageText(message);
 
+      // Handle slash commands first
+      if (messageText.startsWith('/')) {
+        const handled = await this.handleSlashCommand(from, messageText);
+        if (handled) return;
+      }
+
+      // Check for YES/SCHEDULE response 
       if (this.pendingDraft) {
         const handled = await this.handlePendingResponse(from, messageText);
         if (handled) return;
@@ -81,6 +88,139 @@ export class MessageHandler {
       }
     } catch (error) {
       logger.error('Error handling message:', error);
+    }
+  }
+
+  private async handleSlashCommand(from: string, text: string): Promise<boolean> {
+    const parts = text.split(' ');
+    const command = parts[0].toLowerCase();
+    const args = parts.slice(1).join(' ');
+
+    try {
+      switch (command) {
+        case '/help':
+          await this.sendHelp(from);
+          return true;
+
+        case '/status':
+          await this.sendStatus(from);
+          return true;
+
+        case '/groups':
+          await this.listGroups(from);
+          return true;
+
+        case '/setgroup':
+          await this.setTargetGroup(from, args);
+          return true;
+
+        case '/cancel':
+          this.clearPendingDraft();
+          await this.sock.sendMessage(from, { text: '❌ Pending draft cleared.' });
+          return true;
+
+        default:
+          return false;
+      }
+    } catch (error: any) {
+      logger.error(`Error handling command ${command}:`, error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+      return true;
+    }
+  }
+
+  private async sendHelp(from: string) {
+    await this.sock.sendMessage(from, {
+      text: `🤖 *Ahmari Bookstore Bot - Command Center*
+
+*Commands:*
+/help - Tampilkan bantuan ini
+/status - Status bot dan konfigurasi
+/groups - List semua grup yang bot sudah join
+/setgroup <JID> - Set target grup untuk broadcast
+/cancel - Batalkan pending draft
+
+*Cara pakai:*
+1. Forward broadcast FGB ke sini
+2. Bot akan generate draft
+3. Reply YES untuk kirim ke grup
+
+*Tips:*
+- JID grup format: 120363XXXXX@g.us
+- Gunakan /groups untuk lihat JID`
+    });
+  }
+
+  private async sendStatus(from: string) {
+    const groupName = this.targetGroupJid || 'Not set';
+    const hasPending = this.pendingDraft ? 'Yes' : 'No';
+
+    await this.sock.sendMessage(from, {
+      text: `📊 *Bot Status*
+
+🎯 Target Group: ${groupName}
+📝 Pending Draft: ${hasPending}
+⏰ Uptime: Running
+🔑 Owner JIDs: ${this.ownerJids.length} configured`
+    });
+  }
+
+  private async listGroups(from: string) {
+    try {
+      await this.sock.sendMessage(from, { text: '⏳ Fetching groups...' });
+
+      const groups = await this.sock.groupFetchAllParticipating();
+      const groupList = Object.values(groups);
+
+      if (groupList.length === 0) {
+        await this.sock.sendMessage(from, { text: '❌ Bot belum join grup manapun.' });
+        return;
+      }
+
+      let message = `📋 *Groups (${groupList.length}):*\n\n`;
+      groupList.forEach((g: any, i: number) => {
+        const isTarget = g.id === this.targetGroupJid ? ' ✅' : '';
+        message += `${i + 1}. *${g.subject}*${isTarget}\n   \`${g.id}\`\n\n`;
+      });
+
+      message += `\n💡 Gunakan /setgroup <JID> untuk set target.`;
+
+      await this.sock.sendMessage(from, { text: message });
+    } catch (error: any) {
+      logger.error('Failed to fetch groups:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error fetching groups: ${error.message}` });
+    }
+  }
+
+  private async setTargetGroup(from: string, jid: string) {
+    if (!jid || !jid.includes('@g.us')) {
+      await this.sock.sendMessage(from, {
+        text: `❌ Invalid JID. Format: 120363XXXXX@g.us\n\nGunakan /groups untuk lihat JID yang valid.`
+      });
+      return;
+    }
+
+    // Verify the group exists
+    try {
+      const groups = await this.sock.groupFetchAllParticipating();
+      const group = groups[jid];
+
+      if (!group) {
+        await this.sock.sendMessage(from, {
+          text: `❌ Bot tidak ada di grup tersebut.\n\nGunakan /groups untuk lihat grup yang tersedia.`
+        });
+        return;
+      }
+
+      this.targetGroupJid = jid;
+      await this.sock.sendMessage(from, {
+        text: `✅ Target grup diubah ke:\n*${group.subject}*\n\n⚠️ Ini hanya berlaku sampai restart. Untuk permanen, update TARGET_GROUP_JID di .env`
+      });
+
+      logger.info(`Target group changed to: ${jid} (${group.subject})`);
+    } catch (error: any) {
+      logger.error('Failed to set target group:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
     }
   }
 
