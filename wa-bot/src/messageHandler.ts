@@ -306,15 +306,26 @@ export class MessageHandler {
     try {
       const { draft, mediaPaths } = this.pendingDraft;
 
+      // Debug logging
+      logger.info({
+        draftLength: draft?.length || 0,
+        draftPreview: draft?.substring(0, 100) || 'EMPTY',
+        mediaPathsCount: mediaPaths?.length || 0,
+        mediaPaths: mediaPaths,
+        mediaExists: mediaPaths?.length > 0 ? fs.existsSync(mediaPaths[0]) : false
+      }, 'Sending broadcast to group');
+
       // Send to target group
-      if (mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+      if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+        logger.info('Sending with image...');
         await this.sock.sendMessage(this.targetGroupJid, {
           image: { url: mediaPaths[0] },
-          caption: draft
+          caption: draft || ''
         });
       } else {
+        logger.info('Sending text only...');
         await this.sock.sendMessage(this.targetGroupJid, {
-          text: draft
+          text: draft || '(empty draft)'
         });
       }
 
