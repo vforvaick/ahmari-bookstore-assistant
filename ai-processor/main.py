@@ -65,8 +65,11 @@ async def parse_broadcast(request: ParseRequest):
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_broadcast(request: GenerateRequest):
     """Generate Indonesian broadcast from parsed data"""
+    import traceback
+    
     try:
         logger.info(f"Generating broadcast for: {request.parsed_data.title}")
+        logger.debug(f"Parsed data: {request.parsed_data.model_dump()}")
 
         draft = await gemini_client.generate_broadcast(
             request.parsed_data,
@@ -80,8 +83,16 @@ async def generate_broadcast(request: GenerateRequest):
             parsed_data=request.parsed_data
         )
     except Exception as e:
-        logger.error(f"Generation error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        logger.error(f"Generation error: {error_msg}")
+        logger.error(f"Traceback:\n{tb}")
+        
+        # Return a more detailed error message
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Generation failed: {error_msg}"
+        )
 
 @app.post("/extract-style")
 async def extract_style():

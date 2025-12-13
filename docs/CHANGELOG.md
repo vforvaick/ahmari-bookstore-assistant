@@ -8,6 +8,27 @@ All notable changes to this project will be documented in this file.
 - Persistence for conversation state.
 - Documentation for VPS deployment.
 
+## [1.2.1] - 2025-12-14
+
+### Fixed
+- **AI Processor 500 Error**: Fixed HTTP 500 errors during broadcast generation.
+  - Root cause: `gemini-2.0-flash-exp` model quota exceeded
+  - Solution: Switched to `gemini-2.5-flash` (confirmed working on all keys)
+  - Added null-safety in prompt building to prevent crashes
+  - Improved error logging with full tracebacks
+
+### Changed
+- **Default Model**: Changed from `gemini-2.0-flash-exp` to `gemini-2.5-flash`
+- **Error Handling**: Added detailed traceback logging in `/generate` endpoint
+
+### Files Modified
+- `ai-processor/gemini_client.py` (rebuilt with improved logging)
+- `ai-processor/main.py` (better error handling)
+- `docker-compose.yml` (updated default model)
+
+### Reference
+- Session: 64d153f5-df45-4dff-8d7c-d3327cf14fbd
+
 ## [1.2.0] - 2025-12-08
 
 ### Changed
