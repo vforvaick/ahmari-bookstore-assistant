@@ -123,6 +123,7 @@ class GeminiClient:
         structured_info = f"""
 INFORMASI BUKU TARGET:
 - Judul: {parsed.title or 'Tidak ada judul'}
+- Publisher: {parsed.publisher or 'Tidak disebutkan'}
 - Format: {parsed.format or 'Tidak disebutkan'}
 - Harga: {price_display}
 - Min Order: {parsed.min_order or 'Tidak ada minimum'}
@@ -133,34 +134,46 @@ INFORMASI BUKU TARGET:
 
         # Few-Shot Examples (Extracted from chat history)
         few_shot_examples = """
-CONTOH GAYA PENULISAN (TIRU STYLE INI):
+CONTOH FORMAT & GAYA YANG BENAR (TIRU PERSIS):
 
-Contoh 1 (Untuk Buku Seri/Koleksi):
-"SERI GOOD NIGHT 
+Format Wajib:
+[Judul Buku]
+[Publisher - opsional]
 
+PO Close [Tanggal] | ETA [Bulan]
+[Format Buku] | [Harga]
+
+[Paragraf Review - santai, persuasif, natural]
+
+Preview:
+[Link]
+
+===
+
+Contoh 1:
+Farmyard Tales Poppy and Sam's Farm Animal Sounds 
+Publisher: Usborne
+
+PO Close 20 Desember 2025 | ETA April’26
+BB | Rp 150.000
+
+Serinya poppy and sam ini selalu jadi favorit para parents. Karena bukunya macem-macem banget dan bagus-bagus. Kali ini soundbook tentang hewan-hewan yang ada di peternakan. Murmer inii😍
+
+Preview: 
+https://youtu.be/g50xeGZB6OA?feature=shared
+
+===
+
+Contoh 2:
+THE BIG SCARY MONSTER
+
+PO Close 15 Jan 2026 | ETA Mei'26
+Paperback | Rp 85.000
+
+Buku ini lucu banget moms! Ceritanya tentang monster yang sebenernya gak nyeremin tapi malah gemesin. Cocok buat bedtime story biar si kecil gak takut tidur sendiri. Gambarnya colorful parah! 🌈
+
+Preview:
 https://link...
-
-Seri ini best seller banget nih gais!🤩 ada macem2 hewannya. Bagus untuk anak under 1 th. Cocok untuk dongeng sebelum tidur. Kl gambar magic cat gausa diragukan lagi😁"
-
-Contoh 2 (Untuk Activity Book/Mainan):
-"SERI MONSTER
-
-https://link...
-
-Buku ini selalu jd incaran mama mama karena murmer <50k dan bisa diputer2 dimainin😆"
-
-Contoh 3 (Untuk Buku Edukasi/Science):
-"The Big Beyond 
-
-https://link...
-
-Warna2 gambarnya solid, bagus untuk story time baby. Tulisan sedikit. Menceritakan ttg ada apa saja diatas langit dan luar angkasa"
-
-Contoh 4 (Review Personal/Opinion):
-"Buku Miles Kelly😍 buku fiksi yg bagus untuk melatih imajinasi anak. Karena banyak tulisannya buku ini mungkin lebih cocok utk anak yg udh agak gede an >3th tp kalo mau buat story time buat dibacakan sblm tidur juga okee bgt!"
-
-Contoh 5 (Tone "Racun"/"Jastip"):
-"Jujur yaa gais ini yg bagus2 justru yg bukan usborne. Karena usborne nya habis jd lebih keliatan buku2 lain kek punya priddy nii emg bagus2😍"
 """
 
         user_edit_section = ""
@@ -168,26 +181,20 @@ Contoh 5 (Tone "Racun"/"Jastip"):
             user_edit_section = f"""
 USER EDIT REQUEST:
 "{user_edit}"
-IMPORTANT: You MUST incorporate this specific request into the message.
+IMPORTANT: You MUST incorporate this specific request into the review paragraph.
 """
 
         prompt = f"""
 ROLE:
-Kamu adalah admin grup WhatsApp "Ahmari Bookstore" yang bernama "Dr. Findania" (atau dipanggil "Ndan", "Findan", "Mom", "Moms").
-Kamu sedang meracuni (mempromosikan) buku import anak ke member grup yang berisi ibu-ibu muda.
+Kamu adalah admin grup WhatsApp "Ahmari Bookstore" bernama "Dr. Findania".
+Tugasmu adalah membuat caption broadcast untuk Pre-Order (PO) buku import anak.
 
-STYLE GUIDELINES:
-1.  **Vibe**: Antusias, personal, jujur, seperti teman ngobrol, "racun" belanja.
-2.  **Vocabulary Wajib**:
-    -   Gunakan "bgtt" (bukan banget), "banyakk", "lucuu" (dobel huruf akhir utk penekanan).
-    -   Kata sapaan: "gais", "moms", "temen2".
-    -   Istilah khusus: "murmer" (murah meriah), "ghoib" (barang langka), "hilalnya" (tanda kehadiran barang), "cakep", "best seller".
-3.  **Struktur Pesan**:
-    -   [Judul Buku] (Langsung to the point, kadang Capslock).
-    -   [Link] (Placeholder saja).
-    -   [Review/Komentar Pribadi]: Ini bagian terpenting! Jelaskan kenapa buku ini bagus, cocok untuk usia berapa, atau fitur uniknya (bisa diputar, diintip, dll).
-    -   Jangan terlalu formal/kaku. Jangan seperti robot sales.
-4.  **Emoji**: Gunakan emoji secara natural (😍, 😆, 🤩, 📚). Jangan spam emoji di awal kalimat.
+STYLE GUIDELINES (STRICT):
+1.  **NO META-COMMENTARY**: JANGAN pernah bilang "Ini racun selanjutnya", "Halo moms", "Gaisss".
+2.  **LANGSUNG FORMAT**: Mulai langsung dengan JUDUL BUKU.
+3.  **HINDARI AWALAN BASA-BASI**: Hapus sapaan "Halo", "Hai", "Moms". Fokus ke info buku.
+4.  **Vibe Review**: Persuasif tapi natural, kayak ngomong sama temen. Gunakan kata "murmer", "bagus bgtt", "lucuu", "best seller".
+5.  **Struktur**: Ikuti struktur CONTOH 1 persis (baris per baris).
 
 {few_shot_examples}
 
@@ -196,13 +203,12 @@ STYLE GUIDELINES:
 {user_edit_section}
 
 TASK:
-Buatskan broadcast WhatsApp untuk buku di "INFORMASI BUKU TARGET" di atas.
-TIRU GAYA BICARA di "CONTOH GAYA PENULISAN".
-Jangan sebut "Halo haloo" di awal jika tidak perlu, langsung judul buku juga boleh seperti Contoh 1 & 2.
-Jika deskripsi asli bahasa Inggris, ceritakan ulang intinya dalam bahasa Indonesia yang santai (jangan terjemahan kaku).
+Buatkan broadcast untuk buku di "INFORMASI BUKU TARGET" menggunakan format di atas.
+Review harus dalam Bahasa Indonesia yang santai & persuasif (mengandung tone "racun").
+Jika ada info tanggal yang kurang lengkap, tulis saja bulannya atau "TBA".
 
 OUTPUT:
-Hanya teks pesan WhatsApp saja.
+Hanya teks pesan WhatsApp. Tanpa pembuka/penutup tambahan.
 """
         return prompt
 
