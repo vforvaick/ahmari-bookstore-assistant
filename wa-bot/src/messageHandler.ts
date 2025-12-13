@@ -65,6 +65,13 @@ export class MessageHandler {
       // Extract message text
       const messageText = this.extractMessageText(message);
 
+      // Debug logging
+      logger.info({
+        messageText: messageText.substring(0, 50),
+        hasPendingDraft: !!this.pendingDraft,
+        targetGroup: this.targetGroupJid
+      }, 'Message processing');
+
       // Handle slash commands first
       if (messageText.startsWith('/')) {
         const handled = await this.handleSlashCommand(from, messageText);
@@ -73,6 +80,7 @@ export class MessageHandler {
 
       // Check for YES/SCHEDULE response 
       if (this.pendingDraft) {
+        logger.info('Checking pending response...');
         const handled = await this.handlePendingResponse(from, messageText);
         if (handled) return;
       }
