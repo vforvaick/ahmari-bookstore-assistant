@@ -120,13 +120,10 @@ export class WhatsAppClient {
           }, 'Incoming message');
         }
 
-        // Ignore messages from self, UNLESS it's sent to self (Note to Self)
-        // We check if the remoteJid (recipient/sender context) matches any of our owner identities
+        // ALWAYS ignore messages from self (fromMe = true)
+        // This prevents the bot from processing its own sent messages
         if (message.key.fromMe) {
-          const isNoteToSelf = message.key.remoteJid && ownerJids.includes(message.key.remoteJid);
-          if (!isNoteToSelf) {
-            continue;
-          }
+          continue;
         }
 
         // Handle message

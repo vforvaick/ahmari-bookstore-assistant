@@ -17,6 +17,24 @@ All notable changes to this project will be documented in this file.
   - Added null-safety in prompt building to prevent crashes
   - Improved error logging with full tracebacks
 
+- **FGB Broadcast Detection**: Fixed detector not recognizing forwarded messages.
+  - Added support for quoted/forwarded message content
+  - Relaxed pattern matching (media no longer required)
+  - Added price tag emoji pattern (🏷️ Rp)
+
+### Added
+- **Command Center**: WhatsApp slash commands for bot management.
+  - `/help` - Show available commands
+  - `/status` - Bot status and configuration
+  - `/groups` - List all groups bot has joined
+  - `/setgroup <JID>` - Set target group for broadcast
+  - `/cancel` - Clear pending draft
+
+- **YES/EDIT/CANCEL Handler**: Response handling for draft broadcasts.
+  - Reply YES to send broadcast to target group
+  - Reply EDIT for manual editing
+  - Reply CANCEL to discard draft
+
 ### Changed
 - **Default Model**: Changed from `gemini-2.0-flash-exp` to `gemini-2.5-flash`
 - **Error Handling**: Added detailed traceback logging in `/generate` endpoint
@@ -25,6 +43,8 @@ All notable changes to this project will be documented in this file.
 - `ai-processor/gemini_client.py` (rebuilt with improved logging)
 - `ai-processor/main.py` (better error handling)
 - `docker-compose.yml` (updated default model)
+- `wa-bot/src/detector.ts` (improved FGB detection)
+- `wa-bot/src/messageHandler.ts` (command center + YES handler)
 
 ### Reference
 - Session: 64d153f5-df45-4dff-8d7c-d3327cf14fbd
