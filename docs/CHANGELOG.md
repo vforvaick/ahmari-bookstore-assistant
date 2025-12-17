@@ -8,6 +8,63 @@ All notable changes to this project will be documented in this file.
 - Persistence for conversation state.
 - Documentation for VPS deployment.
 
+## [1.3.0] - 2025-12-17
+
+### Added
+- **Hybrid Rule-Based + AI Approach**: Refactored AI processor for more reliable output.
+  - Rule-based handling for: price markup, template structure, link cleanup
+  - AI now only generates: review paragraph + publisher guess
+  - More consistent output format matching Gemini Gems template
+
+- **Price Markup Configuration**: Configurable markup via bot commands.
+  - `/setmarkup <value>` - Set price markup (e.g., `/setmarkup 20000`)
+  - `/getmarkup` - View current markup
+  - `/status` now shows current markup
+  - Default: Rp 20.000
+
+- **Output Formatter Module**: New `output_formatter.py` with:
+  - Precise price calculation (no AI involvement)
+  - Instagram link cleanup (removes `?igshid=...`)
+  - YouTube link cleanup (removes `?si=...`)
+  - Template-based structure matching Gemini Gems
+
+- **Publisher Detection**: Parser now extracts publisher name from raw text.
+  - Supports explicit "Publisher:" format
+  - Detects known publishers (Usborne, DK, Britannica, etc.)
+  - Falls back to AI guess if not found
+
+### Changed
+- **AI Processor API**: Added `/config` GET/POST endpoints for runtime configuration.
+- **Gemini Prompt**: Simplified to focus on review generation only (JSON output).
+- **Status Command**: Now includes price markup information.
+- **Help Command**: Updated with new markup commands.
+
+### Files Modified
+- `ai-processor/models.py` (added `publisher` field)
+- `ai-processor/config/parser-rules.yaml` (added publisher patterns)
+- `ai-processor/output_formatter.py` (NEW)
+- `ai-processor/gemini_client.py` (refactored for review-only)
+- `ai-processor/main.py` (added /config endpoints)
+- `wa-bot/src/aiClient.ts` (added config methods)
+- `wa-bot/src/messageHandler.ts` (added /setmarkup, /getmarkup)
+
+### Reference
+- Session: d8e24723-dba5-48d7-92ea-30fb4a9f4b7e
+
+
+## [1.2.2] - 2025-12-15
+
+### Security
+- **API Key Leak**: Remediated exposed Google API keys in `ai-processor/test_api_keys.py`.
+  - Moved hardcoded keys to `.env` file.
+  - Refactored script to safer pattern using `python-dotenv`.
+  - **Action Required**: Keys must be revoked in Google Cloud Console.
+
+### Files Modified
+- `ai-processor/test_api_keys.py`
+- `ai-processor/.env` (updated)
+- `ai-processor/requirements.txt` (added `python-dotenv`)
+
 ## [1.2.1] - 2025-12-14
 
 ### Fixed

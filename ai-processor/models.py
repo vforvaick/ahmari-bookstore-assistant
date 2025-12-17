@@ -8,6 +8,7 @@ class ParsedBroadcast(BaseModel):
     close_date: Optional[str] = None
     title: Optional[str] = None
     title_en: Optional[str] = None
+    publisher: Optional[str] = None  # Publisher name (extracted or AI-guessed)
     format: Optional[str] = None  # HB, PB, BB
     price_main: Optional[int] = None
     price_secondary: Optional[int] = None

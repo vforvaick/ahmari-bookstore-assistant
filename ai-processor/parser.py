@@ -81,6 +81,7 @@ class FGBParser:
         result.close_date = self._extract_field(text, 'close_date')
         result.title = self._extract_field(text, 'title')
         result.format = self._extract_field(text, 'format')
+        result.publisher = self._extract_field(text, 'publisher')
         result.price_main = self._extract_field(text, 'price_main')
         result.price_secondary = self._extract_field(text, 'price_secondary')
         result.min_order = self._extract_field(text, 'min_order')

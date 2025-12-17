@@ -40,12 +40,14 @@ graph TD
   - Manages conversation state.
 
 ### 2. AI Processor Service (Python + FastAPI)
-- **Role**: Logic core for parsing and style rewriting.
+- **Role**: Logic core for parsing and broadcast generation.
 - **Responsibilities**:
   - Parses raw broadcast text using flexible YAML-based rules.
-  - integrating with Google Gemini API for style rewriting.
-  - Extracts style patterns from chat history.
-  - Provides REST API endpoints for the WA Bot.
+  - **Hybrid Approach** (v1.3.0):
+    - **Rule-based** (`output_formatter.py`): Price markup, template structure, link cleanup
+    - **AI-based** (`gemini_client.py`): Review paragraph generation, publisher guessing
+  - Provides REST API endpoints (`/parse`, `/generate`, `/config`) for the WA Bot.
+  - Runtime configurable price markup via `/config` endpoint.
 
 ### 3. Queue Scheduler Service (Node.js)
 - **Role**: Timer-based job runner.

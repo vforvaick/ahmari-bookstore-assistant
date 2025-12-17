@@ -56,5 +56,29 @@ class AIClient {
             return false;
         }
     }
+    async getConfig() {
+        try {
+            const response = await this.client.get('/config');
+            return response.data;
+        }
+        catch (error) {
+            logger.error('Get config failed:', error.message);
+            throw new Error(`Failed to get config: ${error.message}`);
+        }
+    }
+    async setMarkup(priceMarkup) {
+        try {
+            logger.info(`Setting price markup to: ${priceMarkup}`);
+            const response = await this.client.post('/config', {
+                price_markup: priceMarkup,
+            });
+            logger.info('Markup updated successfully');
+            return { price_markup: response.data.price_markup };
+        }
+        catch (error) {
+            logger.error('Set markup failed:', error.message);
+            throw new Error(`Failed to set markup: ${error.message}`);
+        }
+    }
 }
 exports.AIClient = AIClient;

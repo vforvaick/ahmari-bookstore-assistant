@@ -1,4 +1,12 @@
 patterns:
+  # Publisher extraction (known publishers or explicit format)
+  publisher:
+    - regex: 'Publisher\s*[:\-]?\s*([^\n]+)'
+      group: 1
+    # Known publisher abbreviations/names from FGB
+    - regex: '\b(WoEB|Usborne|DK|Penguin|Scholastic|HarperCollins|Little Tiger|Nosy Crow|Bloomsbury|What on Earth|Britannica)\b'
+      group: 1
+
   # Type: Remainder or Request
   type:
     - regex: '(Remainder|Request)\s*\|\s*ETA'

@@ -1,8 +1,9 @@
 """
-GeminiClient - Simplified and Robust Implementation
+GeminiClient - Simplified Review-Only Implementation
 
 Uses gemini-2.5-flash model with round-robin API key rotation.
-Fixed async/await usage and improved error handling.
+Now only generates review paragraph + optional publisher guess.
+Formatting is handled by OutputFormatter (rule-based).
 """
 
 import json
@@ -14,6 +15,7 @@ import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 from pathlib import Path
 from typing import Optional, List
+from pydantic import BaseModel
 from models import ParsedBroadcast
 
 # Configure logging with more detail
@@ -24,9 +26,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class AIReviewResponse(BaseModel):
+    """Response from Gemini containing review and optional publisher guess."""
+    publisher_guess: Optional[str] = None
+    review: str
+
+
 class GeminiClient:
     """
     Gemini API client with built-in round-robin key rotation and fallback.
+    
+    Now simplified to ONLY generate:
+    1. Publisher guess (if not parsed from raw text)
+    2. Review paragraph in Indonesian "racun belanja" style
+    
+    All formatting is handled by OutputFormatter (rule-based).
     
     Environment Variables:
         GEMINI_API_KEYS: Comma-separated list of API keys (preferred)
@@ -62,37 +76,6 @@ class GeminiClient:
         self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
         
         logger.info(f"GeminiClient initialized with {len(self.api_keys)} API keys, model: {self.model_name}")
-        
-        # Load style profile
-        style_path = Path(__file__).parent / "config/style-profile.json"
-        try:
-            with open(style_path, 'r', encoding='utf-8') as f:
-                self.style_profile = json.load(f)
-            logger.info("Style profile loaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to load style profile: {e}, using defaults")
-            self.style_profile = self._get_default_style_profile()
-    
-    def _get_default_style_profile(self) -> dict:
-        """Return default style profile if file not found."""
-        return {
-            "greetings": ["Halooo moms!", "Ada buku bagus nih!"],
-            "emoji_usage": {"frequency": "medium", "common": ["😍", "📚", "💰"]},
-            "tone": "friendly_informative",
-            "casual_words": {
-                "very": ["banget", "bgtt"],
-                "beautiful": ["bagus bgtt", "cakep"],
-                "cheap": ["murmer", "murah"],
-                "good": ["bagus", "oke nih"]
-            },
-            "structure_preference": {
-                "conversational_intro": True,
-                "emoji_before_price": True,
-                "include_age_recommendation": True,
-                "include_benefits": True
-            },
-            "style_notes": "Casual Indonesian style"
-        }
     
     def _get_next_key_index(self) -> int:
         """Get the next API key index using thread-safe round-robin."""
@@ -106,143 +89,102 @@ class GeminiClient:
         genai.configure(api_key=api_key)
         return genai.GenerativeModel(self.model_name)
 
-    def _build_prompt(self, parsed: ParsedBroadcast, user_edit: Optional[str] = None) -> str:
-        """Build prompt for Gemini with few-shot examples."""
+    def _build_review_prompt(self, parsed: ParsedBroadcast, user_edit: Optional[str] = None) -> str:
+        """
+        Build focused prompt for review paragraph generation only.
         
-        # Format price display with null safety
-        if parsed.price_main:
-            price_display = f"Rp {parsed.price_main:,}".replace(',', '.')
+        The prompt asks AI to produce:
+        1. Publisher guess (if not already known)
+        2. Review paragraph in Indonesian "racun belanja" style
+        """
+        
+        publisher_instruction = ""
+        if not parsed.publisher:
+            publisher_instruction = """
+- Tebak publisher berdasarkan judul buku (misal: "That's not my..." = Usborne, "Britannica" = Britannica Books)
+- Isi publisher_guess dengan nama publisher hasil tebakanmu
+- Jika tidak yakin, isi null"""
         else:
-            price_display = "Harga belum tersedia"
-            
-        if parsed.price_secondary:
-            price_secondary_display = f"Rp {parsed.price_secondary:,}".replace(',', '.')
-            price_display = f"HB: {price_display} / PB: {price_secondary_display}"
-
-        # Build structured info
-        structured_info = f"""
-INFORMASI BUKU TARGET:
-- Judul: {parsed.title or 'Tidak ada judul'}
-- Publisher: {parsed.publisher or 'Tidak disebutkan'}
-- Format: {parsed.format or 'Tidak disebutkan'}
-- Harga: {price_display}
-- Min Order: {parsed.min_order or 'Tidak ada minimum'}
-- ETA: {parsed.eta or 'Tidak disebutkan'}
-- Close: {parsed.close_date or 'Tidak disebutkan'}
-- Deskripsi Asli: {parsed.description_en or 'Tidak ada deskripsi'}
-"""
-
-        # Few-Shot Examples (Extracted from chat history)
-        few_shot_examples = """
-CONTOH FORMAT & GAYA YANG BENAR (TIRU PERSIS):
-
-Format Wajib:
-[Judul Buku]
-[Publisher - opsional]
-
-PO Close [Tanggal] | ETA [Bulan]
-[Format Buku] | [Harga]
-
-[Paragraf Review - santai, persuasif, natural]
-
-Preview:
-[Link]
-
-===
-
-Contoh 1:
-Farmyard Tales Poppy and Sam's Farm Animal Sounds 
-Publisher: Usborne
-
-PO Close 20 Desember 2025 | ETA April’26
-BB | Rp 150.000
-
-Serinya poppy and sam ini selalu jadi favorit para parents. Karena bukunya macem-macem banget dan bagus-bagus. Kali ini soundbook tentang hewan-hewan yang ada di peternakan. Murmer inii😍
-
-Preview: 
-https://youtu.be/g50xeGZB6OA?feature=shared
-
-===
-
-Contoh 2:
-THE BIG SCARY MONSTER
-
-PO Close 15 Jan 2026 | ETA Mei'26
-Paperback | Rp 85.000
-
-Buku ini lucu banget moms! Ceritanya tentang monster yang sebenernya gak nyeremin tapi malah gemesin. Cocok buat bedtime story biar si kecil gak takut tidur sendiri. Gambarnya colorful parah! 🌈
-
-Preview:
-https://link...
-"""
-
-        user_edit_section = ""
+            publisher_instruction = f"- Publisher sudah diketahui: {parsed.publisher}. Isi publisher_guess dengan null."
+        
+        user_edit_instruction = ""
         if user_edit:
-            user_edit_section = f"""
-USER EDIT REQUEST:
+            user_edit_instruction = f"""
+INSTRUKSI KHUSUS DARI USER:
 "{user_edit}"
-IMPORTANT: You MUST incorporate this specific request into the review paragraph.
-"""
+PENTING: Kamu WAJIB mengikuti instruksi ini dalam menulis review."""
 
-        prompt = f"""
-ROLE:
-Kamu adalah admin grup WhatsApp "Ahmari Bookstore" bernama "Dr. Findania".
-Tugasmu adalah membuat caption broadcast untuk Pre-Order (PO) buku import anak.
+        prompt = f"""ROLE: Kamu adalah copywriter untuk "Ahmari Bookstore", toko buku anak impor.
 
-STYLE GUIDELINES (STRICT):
-1.  **NO META-COMMENTARY**: JANGAN pernah bilang "Ini racun selanjutnya", "Halo moms", "Gaisss".
-2.  **LANGSUNG FORMAT**: Mulai langsung dengan JUDUL BUKU.
-3.  **HINDARI AWALAN BASA-BASI**: Hapus sapaan "Halo", "Hai", "Moms". Fokus ke info buku.
-4.  **Vibe Review**: Persuasif tapi natural, kayak ngomong sama temen. Gunakan kata "murmer", "bagus bgtt", "lucuu", "best seller".
-5.  **Struktur**: Ikuti struktur CONTOH 1 persis (baris per baris).
+TUGAS: Tulis 1 paragraf review persuasif untuk buku ini.
 
-{few_shot_examples}
+INFORMASI BUKU:
+- Judul: {parsed.title or 'Tidak diketahui'}
+- Publisher: {parsed.publisher or 'Tidak diketahui'}
+- Format: {parsed.format or 'Tidak disebutkan'}
+- Deskripsi (English): {parsed.description_en or 'Tidak ada deskripsi'}
 
-{structured_info}
+{user_edit_instruction}
 
-{user_edit_section}
+INSTRUKSI PUBLISHER:
+{publisher_instruction}
 
-TASK:
-Buatkan broadcast untuk buku di "INFORMASI BUKU TARGET" menggunakan format di atas.
-Review harus dalam Bahasa Indonesia yang santai & persuasif (mengandung tone "racun").
-Jika ada info tanggal yang kurang lengkap, tulis saja bulannya atau "TBA".
+GAYA PENULISAN:
+- Bahasa Indonesia santai, target: moms gen Z
+- Tone "racun belanja" - persuasif tapi natural, kayak ngobrol sama temen
+- Gunakan kata-kata seperti: "murmer", "lucuu", "bagus bgtt", "wajib punya"
+- Emoji secukupnya (jangan berlebihan)
+- Maksimal 1 paragraf (3-5 kalimat)
+- JANGAN translate literal dari English, tulis ulang dengan gaya sendiri
+- JANGAN mulai dengan sapaan "Halo moms", "Gaisss", dll
+- Langsung fokus ke isi buku dan kenapa bagus untuk anak
 
-OUTPUT:
-Hanya teks pesan WhatsApp. Tanpa pembuka/penutup tambahan.
-"""
+CONTOH REVIEW YANG BAGUS:
+"Buku detektif yang seru banget! 🕵️‍♀️ Ceritanya tentang misteri hilangnya resep kue di hotel mewah. Cocok banget buat melatih logika si Kecil sambil menikmati ilustrasi yang memukau. Wajib dikoleksi!"
+
+"Serinya poppy and sam ini selalu jadi favorit para parents. Karena bukunya macem-macem banget dan bagus-bagus. Kali ini soundbook tentang hewan-hewan yang ada di peternakan. Murmer inii😍"
+
+FORMAT OUTPUT (WAJIB JSON):
+{{
+  "publisher_guess": "Nama Publisher" atau null,
+  "review": "Paragraf review dalam Bahasa Indonesia..."
+}}
+
+HANYA OUTPUT JSON, tanpa penjelasan tambahan."""
+        
         return prompt
 
-    async def generate_broadcast(
+    async def generate_review(
         self,
         parsed: ParsedBroadcast,
         user_edit: Optional[str] = None
-    ) -> str:
+    ) -> AIReviewResponse:
         """
-        Generate Indonesian broadcast from parsed data.
+        Generate Indonesian review paragraph from parsed data.
         
         Uses round-robin key rotation with automatic fallback on quota errors.
         If a key fails with 429 (quota exceeded), tries the next key.
         
         Args:
             parsed: ParsedBroadcast object with book information.
-            user_edit: Optional user edit request.
+            user_edit: Optional user edit request to incorporate.
             
         Returns:
-            Generated broadcast message.
+            AIReviewResponse with publisher_guess and review.
             
         Raises:
             Exception: If all keys fail.
         """
-        logger.info(f"Starting broadcast generation for: {parsed.title}")
+        logger.info(f"Starting review generation for: {parsed.title}")
         
-        prompt = self._build_prompt(parsed, user_edit)
+        prompt = self._build_review_prompt(parsed, user_edit)
         logger.debug(f"Built prompt, length: {len(prompt)} chars")
         
         generation_config = {
-            "temperature": 0.7,
+            "temperature": 0.8,  # Slightly more creative for review
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 1024,
+            "max_output_tokens": 512,  # Shorter since we only need review
         }
         
         # Get starting index for round-robin
@@ -261,7 +203,6 @@ Hanya teks pesan WhatsApp. Tanpa pembuka/penutup tambahan.
                 model = self._get_model_with_key(api_key)
                 
                 # Use synchronous call (google-generativeai doesn't have native async)
-                # but this is fine for the current use case
                 response = model.generate_content(
                     prompt,
                     generation_config=generation_config
@@ -274,9 +215,30 @@ Hanya teks pesan WhatsApp. Tanpa pembuka/penutup tambahan.
                         logger.warning(f"Prompt feedback: {response.prompt_feedback}")
                     continue
                 
-                result = response.text.strip()
-                logger.info(f"Success with API key ...{key_suffix}, response length: {len(result)}")
-                return result
+                result_text = response.text.strip()
+                logger.info(f"Success with API key ...{key_suffix}, response length: {len(result_text)}")
+                
+                # Parse JSON response
+                try:
+                    # Clean up response (remove markdown code blocks if present)
+                    if result_text.startswith('```'):
+                        result_text = result_text.split('```')[1]
+                        if result_text.startswith('json'):
+                            result_text = result_text[4:]
+                    result_text = result_text.strip()
+                    
+                    result_json = json.loads(result_text)
+                    return AIReviewResponse(
+                        publisher_guess=result_json.get('publisher_guess'),
+                        review=result_json.get('review', '')
+                    )
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse JSON response: {e}")
+                    # Fallback: treat entire response as review
+                    return AIReviewResponse(
+                        publisher_guess=None,
+                        review=result_text
+                    )
                 
             except google_exceptions.ResourceExhausted as e:
                 logger.warning(f"API key ...{key_suffix} quota exceeded (429), trying next key...")
@@ -300,5 +262,33 @@ Hanya teks pesan WhatsApp. Tanpa pembuka/penutup tambahan.
         # All keys failed
         error_msg = f"All {len(self.api_keys)} API keys failed. Last error: {last_error}"
         logger.error(error_msg)
-        logger.debug(f"Last error traceback:\n{traceback.format_exc()}")
         raise Exception(error_msg)
+
+
+    # Keep legacy method for backward compatibility during transition
+    async def generate_broadcast(
+        self,
+        parsed: ParsedBroadcast,
+        user_edit: Optional[str] = None
+    ) -> str:
+        """
+        Legacy method - generates full broadcast.
+        Now internally uses generate_review + OutputFormatter.
+        
+        Deprecated: Use generate_review() instead and format with OutputFormatter.
+        """
+        from output_formatter import OutputFormatter
+        
+        # Get AI review
+        ai_response = await self.generate_review(parsed, user_edit)
+        
+        # Update publisher if AI guessed it
+        publisher = ai_response.publisher_guess if not parsed.publisher else parsed.publisher
+        
+        # Format with rule-based formatter
+        formatter = OutputFormatter()
+        return formatter.format_broadcast(
+            parsed,
+            ai_response.review,
+            publisher_override=publisher
+        )

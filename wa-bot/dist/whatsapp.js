@@ -42,7 +42,7 @@ const qrcode_terminal_1 = __importDefault(require("qrcode-terminal"));
 const path_1 = __importDefault(require("path"));
 const messageHandler_1 = require("./messageHandler");
 const baileysLoader_1 = require("./baileysLoader");
-const logger = (0, pino_1.default)({ level: 'info' });
+const logger = (0, pino_1.default)({ level: process.env.LOG_LEVEL || 'info' });
 class WhatsAppClient {
     constructor(sessionsPath = './sessions') {
         this.sock = null;
@@ -58,7 +58,7 @@ class WhatsAppClient {
         this.sock = baileys.default({
             auth: state,
             printQRInTerminal: false, // We'll handle QR display ourselves
-            logger: (0, pino_1.default)({ level: 'warn' }),
+            logger: (0, pino_1.default)({ level: process.env.LOG_LEVEL || 'warn' }),
             browser: baileys.Browsers.macOS('Desktop'),
             version,
             getMessage: async (key) => {
@@ -109,13 +109,28 @@ class WhatsAppClient {
         if (!this.sock) {
             throw new Error('Socket not connected');
         }
-        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, ownerJid, aiClient, mediaPath);
+        // Determine all valid owner JIDs (Phone + optional LID)
+        const ownerJids = [ownerJid];
+        if (process.env.OWNER_LID) {
+            ownerJids.push(process.env.OWNER_LID);
+        }
+        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, ownerJids, aiClient, mediaPath);
         // Listen for messages
         this.sock.ev.on('messages.upsert', async ({ messages }) => {
             for (const message of messages) {
-                // Ignore messages from self
-                if (message.key.fromMe)
+                // Log incoming message for debugging
+                if (process.env.LOG_LEVEL === 'debug') {
+                    logger.debug({
+                        fromMe: message.key.fromMe,
+                        remoteJid: message.key.remoteJid,
+                        pushName: message.pushName
+                    }, 'Incoming message');
+                }
+                // ALWAYS ignore messages from self (fromMe = true)
+                // This prevents the bot from processing its own sent messages
+                if (message.key.fromMe) {
                     continue;
+                }
                 // Handle message
                 await this.messageHandler.handleMessage(message);
             }

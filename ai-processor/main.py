@@ -4,9 +4,11 @@ from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
 from typing import Optional
 import logging
+import os
 
 from parser import FGBParser
 from gemini_client import GeminiClient
+from output_formatter import OutputFormatter
 from models import ParsedBroadcast, GenerateRequest, GenerateResponse
 
 # Logging setup
@@ -15,11 +17,12 @@ logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     gemini_api_keys: Optional[str] = None  # Comma-separated API keys
+    price_markup: int = 20000  # Default price markup
 
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
-app = FastAPI(title="AI Processor", version="1.0.0")
+app = FastAPI(title="AI Processor", version="2.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -33,10 +36,14 @@ app.add_middleware(
 # Initialize services
 parser = FGBParser()
 gemini_client = GeminiClient()  # Reads API keys from environment
+formatter = OutputFormatter(price_markup=settings.price_markup)
 
 class ParseRequest(BaseModel):
     text: str
     media_count: int = 0
+
+class ConfigUpdateRequest(BaseModel):
+    price_markup: Optional[int] = None
 
 @app.get("/health")
 async def health_check():
@@ -46,8 +53,35 @@ async def health_check():
 async def root():
     return {
         "service": "AI Processor",
-        "version": "1.0.0",
-        "endpoints": ["/parse", "/generate", "/extract-style", "/health"]
+        "version": "2.0.0",
+        "description": "Hybrid rule-based + AI broadcast generator",
+        "endpoints": ["/parse", "/generate", "/config", "/health"],
+        "config": {
+            "price_markup": formatter.price_markup
+        }
+    }
+
+@app.get("/config")
+async def get_config():
+    """Get current configuration."""
+    return {
+        "price_markup": formatter.price_markup,
+        "model": gemini_client.model_name,
+        "api_keys_count": len(gemini_client.api_keys)
+    }
+
+@app.post("/config")
+async def update_config(request: ConfigUpdateRequest):
+    """Update configuration (e.g., price markup)."""
+    global formatter
+    
+    if request.price_markup is not None:
+        formatter = OutputFormatter(price_markup=request.price_markup)
+        logger.info(f"Price markup updated to: {request.price_markup}")
+    
+    return {
+        "status": "updated",
+        "price_markup": formatter.price_markup
     }
 
 @app.post("/parse", response_model=ParsedBroadcast)
@@ -64,16 +98,40 @@ async def parse_broadcast(request: ParseRequest):
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_broadcast(request: GenerateRequest):
-    """Generate Indonesian broadcast from parsed data"""
+    """
+    Generate Indonesian broadcast from parsed data using hybrid approach.
+    
+    Workflow:
+    1. AI generates review paragraph + publisher guess
+    2. Rule-based formatter builds final output with:
+       - Price markup (configurable)
+       - Template structure
+       - Link cleanup
+    """
     import traceback
     
     try:
         logger.info(f"Generating broadcast for: {request.parsed_data.title}")
         logger.debug(f"Parsed data: {request.parsed_data.model_dump()}")
 
-        draft = await gemini_client.generate_broadcast(
+        # Step 1: Get AI-generated review
+        ai_response = await gemini_client.generate_review(
             request.parsed_data,
             user_edit=request.user_edit
+        )
+        
+        logger.info(f"AI review generated, length: {len(ai_response.review)}")
+        if ai_response.publisher_guess:
+            logger.info(f"AI guessed publisher: {ai_response.publisher_guess}")
+
+        # Step 2: Determine publisher (parsed > AI guess)
+        publisher = request.parsed_data.publisher or ai_response.publisher_guess
+        
+        # Step 3: Format final broadcast using rule-based formatter
+        draft = formatter.format_broadcast(
+            request.parsed_data,
+            ai_response.review,
+            publisher_override=publisher
         )
 
         logger.info(f"Generated successfully, length: {len(draft)}")

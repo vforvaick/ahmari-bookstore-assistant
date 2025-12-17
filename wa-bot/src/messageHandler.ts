@@ -127,6 +127,14 @@ export class MessageHandler {
           await this.sock.sendMessage(from, { text: '❌ Pending draft cleared.' });
           return true;
 
+        case '/setmarkup':
+          await this.setMarkup(from, args);
+          return true;
+
+        case '/getmarkup':
+          await this.getMarkup(from);
+          return true;
+
         default:
           return false;
       }
@@ -146,11 +154,13 @@ export class MessageHandler {
 /status - Status bot dan konfigurasi
 /groups - List semua grup yang bot sudah join
 /setgroup <JID> - Set target grup untuk broadcast
+/setmarkup <angka> - Set markup harga (contoh: 20000)
+/getmarkup - Lihat markup harga saat ini
 /cancel - Batalkan pending draft
 
 *Cara pakai:*
 1. Forward broadcast FGB ke sini
-2. Bot akan generate draft
+2. Bot akan generate draft dengan harga +markup
 3. Reply YES untuk kirim ke grup
 
 *Tips:*
@@ -163,14 +173,59 @@ export class MessageHandler {
     const groupName = this.targetGroupJid || 'Not set';
     const hasPending = this.pendingDraft ? 'Yes' : 'No';
 
+    // Get AI processor config
+    let markupInfo = 'N/A';
+    try {
+      const config = await this.aiClient.getConfig();
+      markupInfo = `Rp ${config.price_markup.toLocaleString('id-ID')}`;
+    } catch {
+      markupInfo = 'Error fetching';
+    }
+
     await this.sock.sendMessage(from, {
       text: `📊 *Bot Status*
 
 🎯 Target Group: ${groupName}
+💰 Price Markup: ${markupInfo}
 📝 Pending Draft: ${hasPending}
 ⏰ Uptime: Running
 🔑 Owner JIDs: ${this.ownerJids.length} configured`
     });
+  }
+
+  private async setMarkup(from: string, args: string) {
+    const markup = parseInt(args.trim(), 10);
+
+    if (isNaN(markup) || markup < 0) {
+      await this.sock.sendMessage(from, {
+        text: `❌ Format salah. Contoh: /setmarkup 20000`
+      });
+      return;
+    }
+
+    try {
+      const config = await this.aiClient.setMarkup(markup);
+      await this.sock.sendMessage(from, {
+        text: `✅ Markup harga diubah menjadi: *Rp ${config.price_markup.toLocaleString('id-ID')}*\n\n⚠️ Perubahan ini berlaku sampai restart AI Processor.`
+      });
+    } catch (error: any) {
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal set markup: ${error.message}`
+      });
+    }
+  }
+
+  private async getMarkup(from: string) {
+    try {
+      const config = await this.aiClient.getConfig();
+      await this.sock.sendMessage(from, {
+        text: `💰 *Price Markup*: Rp ${config.price_markup.toLocaleString('id-ID')}\n\nGunakan /setmarkup <angka> untuk mengubah.`
+      });
+    } catch (error: any) {
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal ambil config: ${error.message}`
+      });
+    }
   }
 
   private async listGroups(from: string) {
