@@ -126,57 +126,26 @@ class GeminiClient:
         
         publisher_instruction = ""
         if not parsed.publisher:
-            publisher_instruction = """
-- Tebak publisher berdasarkan judul buku (misal: "That's not my..." = Usborne, "Britannica" = Britannica Books)
-- Isi publisher_guess dengan nama publisher hasil tebakanmu
-- Jika tidak yakin, isi null"""
-        else:
-            publisher_instruction = f"- Publisher sudah diketahui: {parsed.publisher}. Isi publisher_guess dengan null."
+            publisher_instruction = "Jika kamu tau publisher-nya berdasarkan judul, tulis di baris pertama: PUBLISHER: [nama]. Jika tidak tau, skip."
         
         user_edit_instruction = ""
         if user_edit:
-            user_edit_instruction = f"""
-INSTRUKSI KHUSUS DARI USER:
-"{user_edit}"
-PENTING: Kamu WAJIB mengikuti instruksi ini dalam menulis review."""
+            user_edit_instruction = f"\nINSTRUKSI KHUSUS: {user_edit}\n"
 
-        prompt = f"""ROLE: Kamu adalah copywriter untuk "Ahmari Bookstore", toko buku anak impor.
+        description_text = parsed.description_en or "Tidak ada deskripsi"
+        # Truncate very long descriptions
+        if len(description_text) > 500:
+            description_text = description_text[:500] + "..."
 
-TUGAS: Tulis 1 paragraf review persuasif untuk buku ini.
-
-INFORMASI BUKU:
-- Judul: {parsed.title or 'Tidak diketahui'}
-- Publisher: {parsed.publisher or 'Tidak diketahui'}
-- Format: {parsed.format or 'Tidak disebutkan'}
-- Deskripsi (English): {parsed.description_en or 'Tidak ada deskripsi'}
-
+        prompt = f"""Tulis 1 paragraf review buku "{parsed.title}" dalam Bahasa Indonesia.
 {user_edit_instruction}
+DESKRIPSI BUKU: {description_text}
 
-INSTRUKSI PUBLISHER:
+GAYA: Santai seperti chat ibu-ibu muda. Pakai kata seperti "seru", "bagus banget", "wajib punya", "lucuu". Tambah 1-2 emoji.
+
 {publisher_instruction}
 
-GAYA PENULISAN:
-- Bahasa Indonesia santai, target: moms gen Z
-- Tone "racun belanja" - persuasif tapi natural, kayak ngobrol sama temen
-- Gunakan kata-kata seperti: "murmer", "lucuu", "bagus bgtt", "wajib punya"
-- Emoji secukupnya (jangan berlebihan)
-- Maksimal 1 paragraf (3-5 kalimat)
-- JANGAN translate literal dari English, tulis ulang dengan gaya sendiri
-- JANGAN mulai dengan sapaan "Halo moms", "Gaisss", dll
-- Langsung fokus ke isi buku dan kenapa bagus untuk anak
-
-CONTOH REVIEW YANG BAGUS:
-"Buku detektif yang seru banget! 🕵️‍♀️ Ceritanya tentang misteri hilangnya resep kue di hotel mewah. Cocok banget buat melatih logika si Kecil sambil menikmati ilustrasi yang memukau. Wajib dikoleksi!"
-
-"Serinya poppy and sam ini selalu jadi favorit para parents. Karena bukunya macem-macem banget dan bagus-bagus. Kali ini soundbook tentang hewan-hewan yang ada di peternakan. Murmer inii😍"
-
-FORMAT OUTPUT (WAJIB JSON):
-{{
-  "publisher_guess": "Nama Publisher" atau null,
-  "review": "Paragraf review dalam Bahasa Indonesia..."
-}}
-
-HANYA OUTPUT JSON, tanpa penjelasan tambahan."""
+TULIS LANGSUNG REVIEW-NYA (3-5 kalimat), jangan pakai format JSON atau penjelasan lain."""
         
         return prompt
 
@@ -244,35 +213,37 @@ HANYA OUTPUT JSON, tanpa penjelasan tambahan."""
                 result_text = response.text.strip()
                 logger.info(f"Success with API key ...{key_suffix}, response length: {len(result_text)}")
                 
-                # Parse JSON response
-                try:
-                    # Clean up response (remove markdown code blocks if present)
-                    if result_text.startswith('```'):
-                        result_text = result_text.split('```')[1]
-                        if result_text.startswith('json'):
-                            result_text = result_text[4:]
-                    result_text = result_text.strip()
-                    
-                    result_json = json.loads(result_text)
-                    return AIReviewResponse(
-                        publisher_guess=result_json.get('publisher_guess'),
-                        review=result_json.get('review', '')
-                    )
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse JSON response: {e}")
-                    # Fallback: try to extract review from malformed JSON
-                    review_text = self._extract_review_from_malformed(result_text)
-                    if review_text:
-                        return AIReviewResponse(
-                            publisher_guess=None,
-                            review=review_text
-                        )
-                    # If extraction failed, generate a simple fallback
-                    logger.warning("Using fallback review generation")
-                    return AIReviewResponse(
-                        publisher_guess=None,
-                        review=f"Buku edukatif yang seru untuk si Kecil! 📚 Yuk eksplorasi bersama keluarga. Wajib masuk wishlist! 🌟"
-                    )
+                # Parse response - now expecting plain text, not JSON
+                publisher_guess = None
+                review = result_text
+                
+                # Check if response starts with PUBLISHER: prefix
+                import re
+                publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
+                if publisher_match:
+                    publisher_guess = publisher_match.group(1).strip()
+                    review = result_text[publisher_match.end():].strip()
+                
+                # Clean up any accidental JSON formatting
+                if review.startswith('{') and '"review"' in review:
+                    try:
+                        result_json = json.loads(review)
+                        review = result_json.get('review', review)
+                        if not publisher_guess:
+                            publisher_guess = result_json.get('publisher_guess')
+                    except:
+                        pass
+                
+                # Remove quotes if wrapped
+                if review.startswith('"') and review.endswith('"'):
+                    review = review[1:-1]
+                
+                logger.info(f"Parsed review length: {len(review)}, publisher: {publisher_guess}")
+                
+                return AIReviewResponse(
+                    publisher_guess=publisher_guess,
+                    review=review
+                )
                 
             except google_exceptions.ResourceExhausted as e:
                 logger.warning(f"API key ...{key_suffix} quota exceeded (429), trying next key...")
