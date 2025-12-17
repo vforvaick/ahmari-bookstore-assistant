@@ -41,30 +41,44 @@ class FGBParser:
         return None
 
     def _extract_description(self, text: str) -> str:
-        """Extract description (text between price and tags/separator)"""
-        # Find the start (after min order or price)
-        price_match = re.search(r'🏷️.*?(?:\n|$)', text, re.MULTILINE)
-        if not price_match:
-            return ""
+        """Extract description (text after separator emoji, before Preview/links)"""
+        
+        # FGB format: separator emoji (🦊🦊🦊 or 🌳🌳🌳) marks START of description
+        separator_match = re.search(r'(🌳|🦊){2,}', text)
+        
+        if separator_match:
+            # Description starts after separator
+            start_pos = separator_match.end()
+        else:
+            # Fallback: try after price line
+            price_match = re.search(r'🏷️.*?(?:\n|$)', text, re.MULTILINE)
+            if not price_match:
+                return ""
+            start_pos = price_match.end()
 
-        start_pos = price_match.end()
-
-        # Find the end (before tags or separator)
-        tag_match = re.search(r'_New\s+\w+_', text[start_pos:])
-        separator_match = re.search(r'(🌳|🦊){2,}', text[start_pos:])
-        link_match = re.search(r'https?://', text[start_pos:])
-
-        end_positions = [
-            tag_match.start() if tag_match else len(text),
-            separator_match.start() if separator_match else len(text),
-            link_match.start() if link_match else len(text)
-        ]
-        end_pos = start_pos + min(end_positions)
-
-        description = text[start_pos:end_pos].strip()
-        # Clean up asterisks and extra whitespace
-        description = re.sub(r'\*+', '', description)
+        # Find the end (before Preview: or links)
+        remaining_text = text[start_pos:]
+        
+        # Look for "Preview" marker or first link
+        preview_match = re.search(r'_?Preview\s*:?_?', remaining_text, re.IGNORECASE)
+        link_match = re.search(r'\*?\s*https?://', remaining_text)
+        
+        end_positions = []
+        if preview_match:
+            end_positions.append(preview_match.start())
+        if link_match:
+            end_positions.append(link_match.start())
+        
+        if end_positions:
+            end_pos = min(end_positions)
+            description = remaining_text[:end_pos].strip()
+        else:
+            description = remaining_text.strip()
+        
+        # Clean up asterisks, underscores, and extra whitespace
+        description = re.sub(r'[\*_]+', '', description)
         description = re.sub(r'\s+', ' ', description)
+        description = description.strip()
 
         return description
 
