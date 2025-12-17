@@ -88,6 +88,32 @@ class GeminiClient:
         """Get a GenerativeModel configured with a specific API key."""
         genai.configure(api_key=api_key)
         return genai.GenerativeModel(self.model_name)
+    
+    def _extract_review_from_malformed(self, text: str) -> Optional[str]:
+        """
+        Try to extract review text from malformed/truncated JSON.
+        
+        Handles cases like: {"publisher_guess": null, "review": "Moms...
+        """
+        import re
+        
+        # Try to find review content after "review":
+        match = re.search(r'"review"\s*:\s*"([^"]*)', text)
+        if match:
+            review = match.group(1)
+            # Only use if we got meaningful content (>20 chars)
+            if len(review) > 20:
+                return review
+        
+        # Try to find any text in Indonesian that looks like a review
+        # Look for common review patterns
+        if 'Moms' in text or 'si Kecil' in text or 'buku' in text.lower():
+            # Extract the text between quotes if possible
+            quotes = re.findall(r'"([^"]{20,})"', text)
+            if quotes:
+                return max(quotes, key=len)  # Return longest match
+        
+        return None
 
     def _build_review_prompt(self, parsed: ParsedBroadcast, user_edit: Optional[str] = None) -> str:
         """
@@ -184,7 +210,7 @@ HANYA OUTPUT JSON, tanpa penjelasan tambahan."""
             "temperature": 0.8,  # Slightly more creative for review
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 512,  # Shorter since we only need review
+            "max_output_tokens": 1024,  # Increased to prevent truncation
         }
         
         # Get starting index for round-robin
@@ -234,10 +260,18 @@ HANYA OUTPUT JSON, tanpa penjelasan tambahan."""
                     )
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse JSON response: {e}")
-                    # Fallback: treat entire response as review
+                    # Fallback: try to extract review from malformed JSON
+                    review_text = self._extract_review_from_malformed(result_text)
+                    if review_text:
+                        return AIReviewResponse(
+                            publisher_guess=None,
+                            review=review_text
+                        )
+                    # If extraction failed, generate a simple fallback
+                    logger.warning("Using fallback review generation")
                     return AIReviewResponse(
                         publisher_guess=None,
-                        review=result_text
+                        review=f"Buku edukatif yang seru untuk si Kecil! 📚 Yuk eksplorasi bersama keluarga. Wajib masuk wishlist! 🌟"
                     )
                 
             except google_exceptions.ResourceExhausted as e:
