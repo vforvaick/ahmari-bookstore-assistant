@@ -9,12 +9,25 @@ Also tests different models to find the best one for the use case.
 import asyncio
 import google.generativeai as genai
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # API Keys to test
-API_KEYS = [
-    "AIzaSyDPOpVXR_JflPd371w0jO01V6ujd5QhhVs",
-    "AIzaSyBMITju8UXJTtO_3vAWS2Uh-NPoPige-zw",
-    "AIzaSyA62jYse_Y9081vdbqUesxYoMD9WW7weQU",
-]
+env_keys = os.getenv("GEMINI_API_KEYS", "")
+if env_keys:
+    API_KEYS = [k.strip() for k in env_keys.split(",") if k.strip()]
+else:
+    # Fallback to single key
+    single_key = os.getenv("GEMINI_API_KEY")
+    API_KEYS = [single_key] if single_key else []
+
+if not API_KEYS:
+    print("❌ No API keys found in environment variables!")
+    print("   Please set GEMINI_API_KEYS in .env file.")
+    exit(1)
 
 # Models to test (ordered by preference for this use case)
 MODELS = [

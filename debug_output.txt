@@ -1,0 +1,322 @@
+2025-12-14 03:46:29,859 - asyncio - DEBUG - Using selector: KqueueSelector
+2025-12-14 03:46:29,862 - gemini_client - INFO - GeminiClient initialized with 1 API keys, model: gemini-2.5-flash
+2025-12-14 03:46:29,863 - gemini_client - INFO - Style profile loaded successfully
+2025-12-14 03:46:29,863 - gemini_client - INFO - Starting broadcast generation for: USBORNE LOOK INSIDE SPACE
+2025-12-14 03:46:29,864 - gemini_client - DEBUG - Built prompt, length: 2900 chars
+2025-12-14 03:46:29,864 - gemini_client - INFO - Trying API key ..._setup (attempt 1/1)
+2025-12-14 03:46:30,599 - gemini_client - ERROR - API key ..._setup error: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+2025-12-14 03:46:30,675 - gemini_client - DEBUG - Full traceback:
+Traceback (most recent call last):
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/gemini_client.py", line 260, in generate_broadcast
+    response = model.generate_content(
+        prompt,
+        generation_config=generation_config
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+        request,
+        **request_options,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+        request,
+    ...<2 lines>...
+        metadata=metadata,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+        target,
+    ...<3 lines>...
+        on_error=on_error,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+        exc,
+    ...<6 lines>...
+        timeout,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.InvalidArgument: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+
+2025-12-14 03:46:30,675 - gemini_client - ERROR - All 1 API keys failed. Last error: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+2025-12-14 03:46:30,675 - gemini_client - DEBUG - Last error traceback:
+NoneType: None
+
+2025-12-14 03:46:30,675 - gemini_client - INFO - Starting broadcast generation for: MAISY'S BUSY DAY STICKER BOOK
+2025-12-14 03:46:30,676 - gemini_client - DEBUG - Built prompt, length: 2870 chars
+2025-12-14 03:46:30,676 - gemini_client - INFO - Trying API key ..._setup (attempt 1/1)
+2025-12-14 03:46:30,849 - gemini_client - ERROR - API key ..._setup error: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+2025-12-14 03:46:30,849 - gemini_client - DEBUG - Full traceback:
+Traceback (most recent call last):
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/gemini_client.py", line 260, in generate_broadcast
+    response = model.generate_content(
+        prompt,
+        generation_config=generation_config
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/generativeai/generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+        request,
+        **request_options,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+        request,
+    ...<2 lines>...
+        metadata=metadata,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+        target,
+    ...<3 lines>...
+        on_error=on_error,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+        exc,
+    ...<6 lines>...
+        timeout,
+    )
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+  File "/Users/faiqnau/fight/bot-wa-bookstore/ai-processor/.venv/lib/python3.14/site-packages/google/api_core/grpc_helpers.py", line 77, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.InvalidArgument: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+
+2025-12-14 03:46:30,850 - gemini_client - ERROR - All 1 API keys failed. Last error: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+2025-12-14 03:46:30,850 - gemini_client - DEBUG - Last error traceback:
+NoneType: None
+
+
+--- TEST 1: EDUCATION BOOK ---
+DEBUG: GENERATED PROMPT PREVIEW:
+==================================================
+
+ROLE:
+Kamu adalah admin grup WhatsApp "Ahmari Bookstore" yang bernama "Dr. Findania" (atau dipanggil "Ndan", "Findan", "Mom", "Moms").
+Kamu sedang meracuni (mempromosikan) buku import anak ke member grup yang berisi ibu-ibu muda.
+
+STYLE GUIDELINES:
+1.  **Vibe**: Antusias, personal, jujur, seperti teman ngobrol, "racun" belanja.
+2.  **Vocabulary Wajib**:
+    -   Gunakan "bgtt" (bukan banget), "banyakk", "lucuu" (dobel huruf akhir utk penekanan).
+    -   Kata sapaan: "gais", "moms", "temen2".
+    -   Istilah khusus: "murmer" (murah meriah), "ghoib" (barang langka), "hilalnya" (tanda kehadiran barang), "cakep", "best seller".
+3.  **Struktur Pesan**:
+    -   [Judul Buku] (Langsung to the point, kadang Capslock).
+    -   [Link] (Placeholder saja).
+    -   [Review/Komentar Pribadi]: Ini bagian terpenting! Jelaskan kenapa buku ini bagus, cocok untuk usia berapa, atau fitur uniknya (bisa diputar, diintip, dll).
+    -   Jangan terlalu formal/kaku. Jangan seperti robot sales.
+4.  **Emoji**: Gunakan emoji secara natural (😍, 😆, 🤩, 📚). Jangan spam emoji di awal kalimat.
+
+
+CONTOH GAYA PENULISAN (TIRU STYLE INI):
+
+Contoh 1 (Untuk Buku Seri/Koleksi):
+"SERI GOOD NIGHT 
+
+https://link...
+
+Seri ini best seller banget nih gais!🤩 ada macem2 hewannya. Bagus untuk anak under 1 th. Cocok untuk dongeng sebelum tidur. Kl gambar magic cat gausa diragukan lagi😁"
+
+Contoh 2 (Untuk Activity Book/Mainan):
+"SERI MONSTER
+
+https://link...
+
+Buku ini selalu jd incaran mama mama karena murmer <50k dan bisa diputer2 dimainin😆"
+
+Contoh 3 (Untuk Buku Edukasi/Science):
+"The Big Beyond 
+
+https://link...
+
+Warna2 gambarnya solid, bagus untuk story time baby. Tulisan sedikit. Menceritakan ttg ada apa saja diatas langit dan luar angkasa"
+
+Contoh 4 (Review Personal/Opinion):
+"Buku Miles Kelly😍 buku fiksi yg bagus untuk melatih imajinasi anak. Karena banyak tulisannya buku ini mungkin lebih cocok utk anak yg udh agak gede an >3th tp kalo mau buat story time buat dibacakan sblm tidur juga okee bgt!"
+
+Contoh 5 (Tone "Racun"/"Jastip"):
+"Jujur yaa gais ini yg bagus2 justru yg bukan usborne. Karena usborne nya habis jd lebih keliatan buku2 lain kek punya priddy nii emg bagus2😍"
+
+
+
+INFORMASI BUKU TARGET:
+- Judul: USBORNE LOOK INSIDE SPACE
+- Format: Board Book
+- Harga: Rp 185.000
+- Min Order: Tidak ada minimum
+- ETA: Akhir November
+- Close: 25 Oktober
+- Deskripsi Asli: A lift-the-flap book about space with over 70 flaps to lift. Children can discover rockets, planets, and galaxies. Great for curious little minds.
+
+
+
+
+TASK:
+Buatskan broadcast WhatsApp untuk buku di "INFORMASI BUKU TARGET" di atas.
+TIRU GAYA BICARA di "CONTOH GAYA PENULISAN".
+Jangan sebut "Halo haloo" di awal jika tidak perlu, langsung judul buku juga boleh seperti Contoh 1 & 2.
+Jika deskripsi asli bahasa Inggris, ceritakan ulang intinya dalam bahasa Indonesia yang santai (jangan terjemahan kaku).
+
+OUTPUT:
+Hanya teks pesan WhatsApp saja.
+
+==================================================
+Error: All 1 API keys failed. Last error: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]
+
+
+--- TEST 2: ACTIVITY BOOK ---
+DEBUG: GENERATED PROMPT PREVIEW:
+==================================================
+
+ROLE:
+Kamu adalah admin grup WhatsApp "Ahmari Bookstore" yang bernama "Dr. Findania" (atau dipanggil "Ndan", "Findan", "Mom", "Moms").
+Kamu sedang meracuni (mempromosikan) buku import anak ke member grup yang berisi ibu-ibu muda.
+
+STYLE GUIDELINES:
+1.  **Vibe**: Antusias, personal, jujur, seperti teman ngobrol, "racun" belanja.
+2.  **Vocabulary Wajib**:
+    -   Gunakan "bgtt" (bukan banget), "banyakk", "lucuu" (dobel huruf akhir utk penekanan).
+    -   Kata sapaan: "gais", "moms", "temen2".
+    -   Istilah khusus: "murmer" (murah meriah), "ghoib" (barang langka), "hilalnya" (tanda kehadiran barang), "cakep", "best seller".
+3.  **Struktur Pesan**:
+    -   [Judul Buku] (Langsung to the point, kadang Capslock).
+    -   [Link] (Placeholder saja).
+    -   [Review/Komentar Pribadi]: Ini bagian terpenting! Jelaskan kenapa buku ini bagus, cocok untuk usia berapa, atau fitur uniknya (bisa diputar, diintip, dll).
+    -   Jangan terlalu formal/kaku. Jangan seperti robot sales.
+4.  **Emoji**: Gunakan emoji secara natural (😍, 😆, 🤩, 📚). Jangan spam emoji di awal kalimat.
+
+
+CONTOH GAYA PENULISAN (TIRU STYLE INI):
+
+Contoh 1 (Untuk Buku Seri/Koleksi):
+"SERI GOOD NIGHT 
+
+https://link...
+
+Seri ini best seller banget nih gais!🤩 ada macem2 hewannya. Bagus untuk anak under 1 th. Cocok untuk dongeng sebelum tidur. Kl gambar magic cat gausa diragukan lagi😁"
+
+Contoh 2 (Untuk Activity Book/Mainan):
+"SERI MONSTER
+
+https://link...
+
+Buku ini selalu jd incaran mama mama karena murmer <50k dan bisa diputer2 dimainin😆"
+
+Contoh 3 (Untuk Buku Edukasi/Science):
+"The Big Beyond 
+
+https://link...
+
+Warna2 gambarnya solid, bagus untuk story time baby. Tulisan sedikit. Menceritakan ttg ada apa saja diatas langit dan luar angkasa"
+
+Contoh 4 (Review Personal/Opinion):
+"Buku Miles Kelly😍 buku fiksi yg bagus untuk melatih imajinasi anak. Karena banyak tulisannya buku ini mungkin lebih cocok utk anak yg udh agak gede an >3th tp kalo mau buat story time buat dibacakan sblm tidur juga okee bgt!"
+
+Contoh 5 (Tone "Racun"/"Jastip"):
+"Jujur yaa gais ini yg bagus2 justru yg bukan usborne. Karena usborne nya habis jd lebih keliatan buku2 lain kek punya priddy nii emg bagus2😍"
+
+
+
+INFORMASI BUKU TARGET:
+- Judul: MAISY'S BUSY DAY STICKER BOOK
+- Format: Paperback
+- Harga: Rp 85.000
+- Min Order: Tidak ada minimum
+- ETA: Desember Awal
+- Close: Tidak disebutkan
+- Deskripsi Asli: Join Maisy for a busy day in this sticker book. Includes over 100 stickers. Perfect for travel entertainment.
+
+
+
+
+TASK:
+Buatskan broadcast WhatsApp untuk buku di "INFORMASI BUKU TARGET" di atas.
+TIRU GAYA BICARA di "CONTOH GAYA PENULISAN".
+Jangan sebut "Halo haloo" di awal jika tidak perlu, langsung judul buku juga boleh seperti Contoh 1 & 2.
+Jika deskripsi asli bahasa Inggris, ceritakan ulang intinya dalam bahasa Indonesia yang santai (jangan terjemahan kaku).
+
+OUTPUT:
+Hanya teks pesan WhatsApp saja.
+
+==================================================
+Error: All 1 API keys failed. Last error: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+]

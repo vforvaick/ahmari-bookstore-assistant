@@ -64,13 +64,15 @@ export class AIClient {
 
   async generate(
     parsedData: ParsedBroadcast,
+    level: number = 1,
     userEdit?: string
   ): Promise<GenerateResponse> {
     try {
-      logger.info('Calling AI Processor /generate endpoint');
+      logger.info(`Calling AI Processor /generate endpoint (level=${level})`);
       const response = await this.client.post<GenerateResponse>('/generate', {
         parsed_data: parsedData,
         user_edit: userEdit || null,
+        level: level,
       });
       logger.info('Generation successful');
       return response.data;

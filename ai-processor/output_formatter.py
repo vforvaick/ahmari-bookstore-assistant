@@ -200,7 +200,8 @@ class OutputFormatter:
         self, 
         parsed_data,  # ParsedBroadcast
         review_paragraph: str,
-        publisher_override: Optional[str] = None
+        publisher_override: Optional[str] = None,
+        level: int = 1
     ) -> str:
         """
         Combine parsed data + AI review into final WhatsApp message.
@@ -209,6 +210,7 @@ class OutputFormatter:
             parsed_data: ParsedBroadcast object with extracted fields
             review_paragraph: AI-generated review paragraph
             publisher_override: Override publisher (e.g., from AI guess)
+            level: Recommendation level (1=Standard, 2=Recommended, 3=Top Pick)
             
         Returns:
             Formatted WhatsApp broadcast message
@@ -219,6 +221,11 @@ class OutputFormatter:
         publisher = publisher_override or parsed_data.publisher
         title_line = self.format_title_line(parsed_data.title or "Untitled", publisher)
         lines.append(title_line)
+        
+        # 1b. Top Pick marker for level 3
+        if level == 3:
+            lines.append("⭐ Top Pick Ahmari Bookstore")
+        
         lines.append("")  # Blank line
         
         # 2. Date Line

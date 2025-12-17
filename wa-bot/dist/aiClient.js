@@ -32,12 +32,13 @@ class AIClient {
             throw new Error(`AI Processor parse failed: ${error.message}`);
         }
     }
-    async generate(parsedData, userEdit) {
+    async generate(parsedData, level = 1, userEdit) {
         try {
-            logger.info('Calling AI Processor /generate endpoint');
+            logger.info(`Calling AI Processor /generate endpoint (level=${level})`);
             const response = await this.client.post('/generate', {
                 parsed_data: parsedData,
                 user_edit: userEdit || null,
+                level: level,
             });
             logger.info('Generation successful');
             return response.data;

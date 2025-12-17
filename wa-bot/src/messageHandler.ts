@@ -8,16 +8,19 @@ import { loadBaileys, WASocket, proto } from './baileysLoader';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
-// Pending draft state (simple in-memory for now)
-interface PendingDraft {
-  draft: string;
+// Pending state (simple in-memory for now)
+interface PendingState {
+  // State: 'level_selection' or 'draft_pending'
+  state: 'level_selection' | 'draft_pending';
+  parsedData?: any;  // ParsedBroadcast from AI processor
   mediaPaths: string[];
+  draft?: string;
   timestamp: number;
 }
 
 export class MessageHandler {
   private ownerJids: string[];
-  private pendingDraft: PendingDraft | null = null;
+  private pendingState: PendingState | null = null;
   private targetGroupJid: string | null;
 
   constructor(
@@ -68,7 +71,7 @@ export class MessageHandler {
       // Debug logging
       logger.info({
         messageText: messageText.substring(0, 50),
-        hasPendingDraft: !!this.pendingDraft,
+        hasPendingState: !!this.pendingState,
         targetGroup: this.targetGroupJid
       }, 'Message processing');
 
@@ -78,8 +81,8 @@ export class MessageHandler {
         if (handled) return;
       }
 
-      // Check for YES/SCHEDULE response 
-      if (this.pendingDraft) {
+      // Check for pending state responses 
+      if (this.pendingState) {
         logger.info('Checking pending response...');
         const handled = await this.handlePendingResponse(from, messageText);
         if (handled) return;
@@ -123,8 +126,8 @@ export class MessageHandler {
           return true;
 
         case '/cancel':
-          this.clearPendingDraft();
-          await this.sock.sendMessage(from, { text: '❌ Pending draft cleared.' });
+          this.clearPendingState();
+          await this.sock.sendMessage(from, { text: '❌ Pending state cleared.' });
           return true;
 
         case '/setmarkup':
@@ -171,7 +174,7 @@ export class MessageHandler {
 
   private async sendStatus(from: string) {
     const groupName = this.targetGroupJid || 'Not set';
-    const hasPending = this.pendingDraft ? 'Yes' : 'No';
+    const hasPending = this.pendingState ? 'Yes' : 'No';
 
     // Get AI processor config
     let markupInfo = 'N/A';
@@ -300,50 +303,115 @@ export class MessageHandler {
   }
 
   private async handlePendingResponse(from: string, text: string): Promise<boolean> {
-    if (!this.pendingDraft) return false;
+    if (!this.pendingState) return false;
 
-    // Check for YES response
-    if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
-      await this.sendBroadcast(from);
-      return true;
-    }
-
-    // Check for SCHEDULE response
-    if (text.includes('schedule') || text.includes('antri') || text.includes('nanti')) {
-      await this.scheduleBroadcast(from);
-      return true;
-    }
-
-    // Check for EDIT response
-    if (text.includes('edit') || text.includes('ubah') || text.includes('ganti')) {
-      await this.sock.sendMessage(from, {
-        text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
-      });
-      this.clearPendingDraft();
-      return true;
-    }
-
-    // Check for CANCEL response
-    if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
-      await this.sock.sendMessage(from, {
-        text: '❌ Draft dibatalkan.'
-      });
-      this.clearPendingDraft();
-      return true;
-    }
-
-    // Check if draft is expired (5 minutes)
-    if (Date.now() - this.pendingDraft.timestamp > 5 * 60 * 1000) {
-      logger.info('Pending draft expired');
-      this.clearPendingDraft();
+    // Check if state is expired (5 minutes)
+    if (Date.now() - this.pendingState.timestamp > 5 * 60 * 1000) {
+      logger.info('Pending state expired');
+      this.clearPendingState();
       return false;
+    }
+
+    // STATE 1: Level selection - waiting for 1, 2, or 3
+    if (this.pendingState.state === 'level_selection') {
+      // Check for numeric level response
+      if (['1', '2', '3'].includes(text.trim())) {
+        const level = parseInt(text.trim());
+        await this.generateDraftWithLevel(from, level);
+        return true;
+      }
+
+      // Check for CANCEL
+      if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+        await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
+        this.clearPendingState();
+        return true;
+      }
+
+      // Invalid response - remind user
+      await this.sock.sendMessage(from, {
+        text: '⚠️ Balas dengan angka 1, 2, atau 3 untuk pilih level rekomendasi.'
+      });
+      return true;
+    }
+
+    // STATE 2: Draft pending - waiting for YES/CANCEL
+    if (this.pendingState.state === 'draft_pending') {
+      // Check for YES response
+      if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
+        await this.sendBroadcast(from);
+        return true;
+      }
+
+      // Check for SCHEDULE response
+      if (text.includes('schedule') || text.includes('antri') || text.includes('nanti')) {
+        await this.scheduleBroadcast(from);
+        return true;
+      }
+
+      // Check for EDIT response
+      if (text.includes('edit') || text.includes('ubah') || text.includes('ganti')) {
+        await this.sock.sendMessage(from, {
+          text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
+        });
+        this.clearPendingState();
+        return true;
+      }
+
+      // Check for CANCEL response
+      if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+        await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
+        this.clearPendingState();
+        return true;
+      }
     }
 
     return false;
   }
 
+  private async generateDraftWithLevel(from: string, level: number) {
+    if (!this.pendingState || !this.pendingState.parsedData) {
+      await this.sock.sendMessage(from, { text: '❌ Error: data tidak ditemukan.' });
+      this.clearPendingState();
+      return;
+    }
+
+    try {
+      await this.sock.sendMessage(from, { text: `⏳ Generating level ${level} draft...` });
+
+      // Generate with selected level
+      const generated = await this.aiClient.generate(
+        this.pendingState.parsedData,
+        level
+      );
+
+      logger.info(`Draft generated with level ${level}`);
+
+      // Update pending state to draft_pending
+      this.pendingState.state = 'draft_pending';
+      this.pendingState.draft = generated.draft;
+
+      // Send draft with media
+      const { mediaPaths } = this.pendingState;
+      if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+        await this.sock.sendMessage(from, {
+          image: { url: mediaPaths[0] },
+          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+        });
+      } else {
+        await this.sock.sendMessage(from, {
+          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+        });
+      }
+    } catch (error: any) {
+      logger.error('Error generating draft:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+      this.clearPendingState();
+    }
+  }
+
   private async sendBroadcast(from: string) {
-    if (!this.pendingDraft) {
+    if (!this.pendingState || !this.pendingState.draft) {
       await this.sock.sendMessage(from, {
         text: '❌ Tidak ada draft yang pending.'
       });
@@ -354,12 +422,12 @@ export class MessageHandler {
       await this.sock.sendMessage(from, {
         text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
       });
-      this.clearPendingDraft();
+      this.clearPendingState();
       return;
     }
 
     try {
-      const { draft, mediaPaths } = this.pendingDraft;
+      const { draft, mediaPaths } = this.pendingState;
 
       // Debug logging
       logger.info({
@@ -397,7 +465,7 @@ export class MessageHandler {
         text: `❌ Gagal kirim broadcast: ${error.message}`
       });
     } finally {
-      this.clearPendingDraft();
+      this.clearPendingState();
     }
   }
 
@@ -406,13 +474,13 @@ export class MessageHandler {
     await this.sock.sendMessage(from, {
       text: '📅 Fitur schedule masih dalam pengembangan. Untuk sementara, silakan kirim manual dengan reply YES.'
     });
-    // Don't clear pending draft so user can still reply YES
+    // Don't clear pending state so user can still reply YES
   }
 
-  private clearPendingDraft() {
-    if (this.pendingDraft) {
+  private clearPendingState() {
+    if (this.pendingState) {
       // Cleanup any remaining media files
-      for (const filepath of this.pendingDraft.mediaPaths) {
+      for (const filepath of this.pendingState.mediaPaths) {
         try {
           if (fs.existsSync(filepath)) {
             fs.unlinkSync(filepath);
@@ -422,7 +490,7 @@ export class MessageHandler {
           logger.error(`Failed to cleanup media ${filepath}:`, error);
         }
       }
-      this.pendingDraft = null;
+      this.pendingState = null;
     }
   }
 
@@ -436,8 +504,8 @@ export class MessageHandler {
       return;
     }
 
-    // Clear any existing pending draft
-    this.clearPendingDraft();
+    // Clear any existing pending state
+    this.clearPendingState();
 
     const mediaPaths: string[] = [];
 
@@ -498,29 +566,38 @@ export class MessageHandler {
 
       logger.info(`Parse successful - format: ${parsedData.format || 'unknown'}`);
 
-      // Generate draft
-      const generated = await this.aiClient.generate(parsedData);
-
-      logger.info('Draft generated successfully');
-
-      // Store pending draft
-      this.pendingDraft = {
-        draft: generated.draft,
-        mediaPaths: [...mediaPaths], // Copy paths, don't cleanup yet
+      // Store pending state for level selection
+      this.pendingState = {
+        state: 'level_selection',
+        parsedData: parsedData,
+        mediaPaths: [...mediaPaths],
         timestamp: Date.now()
       };
 
-      // Send draft with media
+      // Show level selection with preview
+      const levelSelectionMessage = `📚 *${parsedData.title || 'Untitled'}*
+
+Pilih level rekomendasi:
+
+1️⃣ *Standard* - Informatif, light hard-sell
+2️⃣ *Recommended* - Persuasif, medium hard-sell  
+3️⃣ *Top Pick* ⭐ - Racun belanja! + marker "Top Pick Ahmari Bookstore"
+
+---
+Balas dengan angka *1*, *2*, atau *3*`;
+
       if (mediaPaths.length > 0) {
         await this.sock.sendMessage(from, {
           image: { url: mediaPaths[0] },
-          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+          caption: levelSelectionMessage,
         });
       } else {
         await this.sock.sendMessage(from, {
-          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+          text: levelSelectionMessage,
         });
       }
+
+      logger.info('Level selection prompt sent');
 
       // DON'T cleanup media yet - wait for YES response
 

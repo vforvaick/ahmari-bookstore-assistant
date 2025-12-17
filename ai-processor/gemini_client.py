@@ -115,13 +115,14 @@ class GeminiClient:
         
         return None
 
-    def _build_review_prompt(self, parsed: ParsedBroadcast, user_edit: Optional[str] = None) -> str:
+    def _build_review_prompt(self, parsed: ParsedBroadcast, level: int = 1, user_edit: Optional[str] = None) -> str:
         """
-        Build focused prompt for review paragraph generation only.
+        Build prompt for review based on recommendation level.
         
-        The prompt asks AI to produce:
-        1. Publisher guess (if not already known)
-        2. Review paragraph in Indonesian "racun belanja" style
+        Levels:
+        - 1: Standard - light hard-sell, informative
+        - 2: Recommended - medium hard-sell, more persuasive
+        - 3: Top Pick - strong "racun", very persuasive
         """
         
         publisher_instruction = ""
@@ -133,15 +134,33 @@ class GeminiClient:
             user_edit_instruction = f"\nINSTRUKSI KHUSUS: {user_edit}\n"
 
         description_text = parsed.description_en or "Tidak ada deskripsi"
-        # Truncate very long descriptions
         if len(description_text) > 500:
             description_text = description_text[:500] + "..."
+
+        # Level-specific style instructions
+        if level == 1:
+            style = """GAYA: Informatif tapi tetap menarik. Deskripsikan isi buku dengan santai.
+Pakai kata seperti "seru", "menarik", "cocok untuk".
+Jangan terlalu hard-selling. Fokus pada konten buku.
+Tambah 1-2 emoji."""
+
+        elif level == 2:
+            style = """GAYA: Santai seperti chat ibu-ibu muda, agak persuasif.
+Pakai kata seperti "bagus banget", "recommended", "worth it".
+Lebih antusias dari biasa, tapi tetap natural.
+Tambah 1-2 emoji."""
+
+        else:  # level == 3
+            style = """GAYA: Racun belanja! Sangat persuasif dan antusias.
+Pakai kata seperti "wajib punya", "favorit", "must have", "bagus bgtt".
+Tunjukkan kenapa buku ini spesial dan layak jadi koleksi.
+Tambah 2-3 emoji yang ekspresif."""
 
         prompt = f"""Tulis 1 paragraf review buku "{parsed.title}" dalam Bahasa Indonesia.
 {user_edit_instruction}
 DESKRIPSI BUKU: {description_text}
 
-GAYA: Santai seperti chat ibu-ibu muda. Pakai kata seperti "seru", "bagus banget", "wajib punya", "lucuu". Tambah 1-2 emoji.
+{style}
 
 {publisher_instruction}
 
@@ -152,6 +171,7 @@ TULIS LANGSUNG REVIEW-NYA (3-5 kalimat), jangan pakai format JSON atau penjelasa
     async def generate_review(
         self,
         parsed: ParsedBroadcast,
+        level: int = 1,
         user_edit: Optional[str] = None
     ) -> AIReviewResponse:
         """
@@ -162,6 +182,7 @@ TULIS LANGSUNG REVIEW-NYA (3-5 kalimat), jangan pakai format JSON atau penjelasa
         
         Args:
             parsed: ParsedBroadcast object with book information.
+            level: Recommendation level (1=Standard, 2=Recommended, 3=Top Pick).
             user_edit: Optional user edit request to incorporate.
             
         Returns:
@@ -170,9 +191,9 @@ TULIS LANGSUNG REVIEW-NYA (3-5 kalimat), jangan pakai format JSON atau penjelasa
         Raises:
             Exception: If all keys fail.
         """
-        logger.info(f"Starting review generation for: {parsed.title}")
+        logger.info(f"Starting review generation for: {parsed.title} (level={level})")
         
-        prompt = self._build_review_prompt(parsed, user_edit)
+        prompt = self._build_review_prompt(parsed, level, user_edit)
         logger.debug(f"Built prompt, length: {len(prompt)} chars")
         
         generation_config = {

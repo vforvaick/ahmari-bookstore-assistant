@@ -111,12 +111,13 @@ async def generate_broadcast(request: GenerateRequest):
     import traceback
     
     try:
-        logger.info(f"Generating broadcast for: {request.parsed_data.title}")
+        logger.info(f"Generating broadcast for: {request.parsed_data.title} (level={request.level})")
         logger.debug(f"Parsed data: {request.parsed_data.model_dump()}")
 
-        # Step 1: Get AI-generated review
+        # Step 1: Get AI-generated review with level-specific tone
         ai_response = await gemini_client.generate_review(
             request.parsed_data,
+            level=request.level,
             user_edit=request.user_edit
         )
         
@@ -131,7 +132,8 @@ async def generate_broadcast(request: GenerateRequest):
         draft = formatter.format_broadcast(
             request.parsed_data,
             ai_response.review,
-            publisher_override=publisher
+            publisher_override=publisher,
+            level=request.level
         )
 
         logger.info(f"Generated successfully, length: {len(draft)}")

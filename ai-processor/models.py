@@ -24,6 +24,7 @@ class GenerateRequest(BaseModel):
     """Request to generate Indonesian broadcast"""
     parsed_data: ParsedBroadcast
     user_edit: Optional[str] = None
+    level: int = 1  # Recommendation level: 1=Standard, 2=Recommended, 3=Top Pick
 
 class GenerateResponse(BaseModel):
     """Generated broadcast in Indonesian"""
