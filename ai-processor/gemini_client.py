@@ -139,22 +139,33 @@ class GeminiClient:
 
         # Level-specific style instructions
         if level == 1:
-            style = """GAYA: Informatif tapi tetap menarik. Deskripsikan isi buku dengan santai.
-Pakai kata seperti "seru", "menarik", "cocok untuk".
-Jangan terlalu hard-selling. Fokus pada konten buku.
-Tambah 1-2 emoji."""
+            style = """GAYA Level 1 - Soft Informative:
+- Tone: Informatif & helpful, seperti sharing info buku bagus ke teman
+- Struktur: Ceritakan isi buku → nilai edukatif → closing ringan
+- Kata: "seru", "menarik", "cocok untuk anak", "isinya tentang"
+- HINDARI: "wajib", "must have", "racun"
+- Selling: Implicit (let the content sell itself)
+- Emoji: 1-2 simple emoji
+- Target: Educate + soft nudge"""
 
         elif level == 2:
-            style = """GAYA: Santai seperti chat ibu-ibu muda, agak persuasif.
-Pakai kata seperti "bagus banget", "recommended", "worth it".
-Lebih antusias dari biasa, tapi tetap natural.
-Tambah 1-2 emoji."""
+            style = """GAYA Level 2 - Persuasive Recommendation:
+- Tone: Antusias & recommendation-driven, kayak sharing favorit yang proven bagus
+- Struktur: Hook interest → highlight unique value → strong call-to-action
+- Kata: "recommended banget", "worth it", "bagus", "anak pasti suka", "ga nyesel"
+- Selling: Moderate (show value + social proof vibes)
+- Emoji: 2 emoji strategis
+- Target: Create interest + desire"""
 
         else:  # level == 3
-            style = """GAYA: Racun belanja! Sangat persuasif dan antusias.
-Pakai kata seperti "wajib punya", "favorit", "must have", "bagus bgtt".
-Tunjukkan kenapa buku ini spesial dan layak jadi koleksi.
-Tambah 2-3 emoji yang ekspresif."""
+            style = """GAYA Level 3 - RACUN MODE (FOMO-driven):
+- Tone: VERY enthusiastic, urgency, fear of missing out
+- Struktur: Exciting hook → multiple value points → STRONG urgency close
+- Kata WAJIB pakai: "wajib punya", "favorit Ahmari", "recommended bgtt", "limited", "jarang", "cepet habis"
+- Urgency phrases: "Grab fast!", "Stock terbatas!", "PO bentar lagi close!"
+- Emoji: 3-4 ekspresif emoji
+- Selling: AGGRESSIVE (make them feel they'll regret NOT buying)
+- Target: FOMO + instant buy decision"""
 
         prompt = f"""Tulis 1 paragraf review buku "{parsed.title}" dalam Bahasa Indonesia.
 {user_edit_instruction}
