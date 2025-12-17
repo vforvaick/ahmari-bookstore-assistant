@@ -11,7 +11,7 @@ class AIClient {
     constructor(baseURL) {
         this.client = axios_1.default.create({
             baseURL,
-            timeout: 30000,
+            timeout: 60000, // 60 seconds for slow Gemini API on 1C1G VPS
             headers: {
                 'Content-Type': 'application/json',
             },
