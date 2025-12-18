@@ -8,7 +8,36 @@ All notable changes to this project will be documented in this file.
 - Persistence for conversation state.
 - Documentation for VPS deployment.
 
-## [1.3.0] - 2025-12-17
+## [1.4.0] - 2025-12-18
+
+### Added
+- **3-Tier Recommendation Level System**: User-selectable tone for AI reviews.
+  - **Level 1 (Standard)**: Informative, soft-sell (educate + soft nudge).
+  - **Level 2 (Recommended)**: Persuasive, value-driven (interest + desire).
+  - **Level 3 (Top Pick)**: "Racun Mode", high FOMO, urgency.
+  - Includes "⭐ Top Pick Ahmari Bookstore" marker line for Level 3.
+
+- **Level Selection Flow**: New 2-step process in WA Bot.
+  - Forward FGB → Bot prompts for level (1/2/3) → User replies number → Bot generates draft.
+
+### Changed
+- **AI Prompts**: Completely rewritten `gemini_client` prompts to be distinct and selling-focused.
+- **Timeout**: Increased AI processing timeout from 30s to **60s** to accommodate slow VPS responses.
+- **Generative Config**: Increased `max_output_tokens` to 2048 to prevent truncation of long reviews.
+
+### Fixed
+- **Truncated AI Reviews**: Added explicit instruction and increased token limit to ensure complete paragraphs.
+- **Timeout Errors**: Fixed `AxiosError: timeout exceeded` on low-spec VPS by doubling timeout.
+
+### Files Modified
+- `ai-processor/models.py` (added level field)
+- `ai-processor/gemini_client.py` (level-specific prompts, increased tokens)
+- `ai-processor/output_formatter.py` (Top Pick marker logic)
+- `ai-processor/main.py` (handle level param)
+- `wa-bot/src/messageHandler.ts` (state machine for level selection)
+- `wa-bot/src/aiClient.ts` (level param, 60s timeout)
+
+---
 
 ### Added
 - **Hybrid Rule-Based + AI Approach**: Refactored AI processor for more reliable output.

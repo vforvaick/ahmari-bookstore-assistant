@@ -11,7 +11,12 @@ graph TD
     WABot -->|Text + Media| AI[AI Processor API]
     AI -->|Parsed Data| Parser[Parser Logic]
     AI -->|Draft| Gemini[Google Gemini AI]
-    AI -->|Draft Response| WABot
+    AI -->|Draft| Gemini[Google Gemini AI]
+    AI -->|Draft Response + Level| WABot
+    
+    WABot -->|Level Selection Request (1/2/3)| User
+    User -->|Select Level| WABot
+    WABot -->|Request Generation with Level| AI
     
     WABot -->|Approval Request| User
     User -->|YES/EDIT/SCHEDULE| WABot
@@ -46,6 +51,10 @@ graph TD
   - **Hybrid Approach** (v1.3.0):
     - **Rule-based** (`output_formatter.py`): Price markup, template structure, link cleanup
     - **AI-based** (`gemini_client.py`): Review paragraph generation, publisher guessing
+  - **3-Tier Recommendation System** (v1.4.0):
+    - **Level 1 (Standard)**: Informative, soft-sell tone.
+    - **Level 2 (Recommended)**: Persuasive, value-driven tone.
+    - **Level 3 (Top Pick)**: "Racun Mode", high urgency, includes `⭐ Top Pick Ahmari Bookstore` marker.
   - Provides REST API endpoints (`/parse`, `/generate`, `/config`) for the WA Bot.
   - Runtime configurable price markup via `/config` endpoint.
 
