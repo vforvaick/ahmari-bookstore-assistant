@@ -167,7 +167,8 @@ class GeminiClient:
 - Selling: AGGRESSIVE (make them feel they'll regret NOT buying)
 - Target: FOMO + instant buy decision"""
 
-        prompt = f"""Tulis 1 paragraf review buku "{parsed.title}" dalam Bahasa Indonesia.
+        prompt = f"""Tulis 1 paragraf LENGKAP review buku \"{parsed.title}\" dalam Bahasa Indonesia.
+PANJANG TARGET: Minimal 3-5 kalimat LENGKAP (jangan terpotong di tengah).
 {user_edit_instruction}
 DESKRIPSI BUKU: {description_text}
 
@@ -175,7 +176,8 @@ DESKRIPSI BUKU: {description_text}
 
 {publisher_instruction}
 
-TULIS LANGSUNG REVIEW-NYA (3-5 kalimat), jangan pakai format JSON atau penjelasan lain."""
+IMPORTANT: Pastikan paragraf selesai sempurna dengan kalimat penutup yang kuat. JANGAN berhenti di tengah kalimat!
+TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON atau penjelasan lain."""
         
         return prompt
 
@@ -211,7 +213,7 @@ TULIS LANGSUNG REVIEW-NYA (3-5 kalimat), jangan pakai format JSON atau penjelasa
             "temperature": 0.8,  # Slightly more creative for review
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 1024,  # Increased to prevent truncation
+            "max_output_tokens": 2048,  # Increased to 2048 to prevent truncation
         }
         
         # Get starting index for round-robin
