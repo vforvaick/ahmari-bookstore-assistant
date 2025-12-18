@@ -316,15 +316,18 @@ class MessageHandler {
         return false;
     }
     async generateDraftWithLevel(from, level) {
-        if (!this.pendingState || !this.pendingState.parsedData) {
+        if (!this.pendingState || !this.pendingState.rawText) {
             await this.sock.sendMessage(from, { text: '❌ Error: data tidak ditemukan.' });
             this.clearPendingState();
             return;
         }
         try {
-            await this.sock.sendMessage(from, { text: `⏳ Generating level ${level} draft...` });
+            await this.sock.sendMessage(from, { text: `⏳ Parsing & generating level ${level} draft...` });
+            // Parse NOW (after level selection to save 1 API call)
+            const parsedData = await this.aiClient.parse(this.pendingState.rawText, this.pendingState.mediaPaths.length);
+            logger.info(`Parse successful - format: ${parsedData.format || 'unknown'}`);
             // Generate with selected level
-            const generated = await this.aiClient.generate(this.pendingState.parsedData, level);
+            const generated = await this.aiClient.generate(parsedData, level);
             logger.info(`Draft generated with level ${level}`);
             // Update pending state to draft_pending
             this.pendingState.state = 'draft_pending';
@@ -477,18 +480,15 @@ class MessageHandler {
                     }
                 }
             }
-            // Parse with AI Processor
-            const parsedData = await this.aiClient.parse(detection.text, mediaPaths.length);
-            logger.info(`Parse successful - format: ${parsedData.format || 'unknown'}`);
-            // Store pending state for level selection
+            // Store pending state for level selection (NO parsing yet to save tokens)
             this.pendingState = {
                 state: 'level_selection',
-                parsedData: parsedData,
+                rawText: detection.text, // Store raw text for later parsing
                 mediaPaths: [...mediaPaths],
                 timestamp: Date.now()
             };
-            // Show level selection with preview
-            const levelSelectionMessage = `📚 *${parsedData.title || 'Untitled'}*
+            // Show level selection with generic message
+            const levelSelectionMessage = `📚 *Buku Baru Terdeteksi*
 
 Pilih level rekomendasi:
 
