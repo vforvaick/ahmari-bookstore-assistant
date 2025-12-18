@@ -137,16 +137,16 @@ class GeminiClient:
         if len(description_text) > 500:
             description_text = description_text[:500] + "..."
 
-        # Level-specific style instructions
         if level == 1:
-            style = """GAYA Level 1 - Soft Informative:
-- Tone: Informatif & helpful, seperti sharing info buku bagus ke teman
-- Struktur: Ceritakan isi buku → nilai edukatif → closing ringan
-- Kata: "seru", "menarik", "cocok untuk anak", "isinya tentang"
-- HINDARI: "wajib", "must have", "racun"
-- Selling: Implicit (let the content sell itself)
+            style = """GAYA Level 1 - Soft Informative (Friendly):
+- Tone: Akrab & hangat (Moms persona), BUKAN kaku/formal seperti robot korporat.
+- Sapaan: Wajib pakai "Moms" atau sapaan akrab.
+- Struktur: Intro santai ("Moms, buku ini membahas...") → isi edukatif → closing ringan.
+- Kata: "seru", "menarik", "cocok buat", "isinya bagus", "membantu anak"
+- HINDARI: "wajib", "must have", "racun", bahasa baku/kaku
+- Selling: Santai (edukasi dulu, jualan belakangan)
 - Emoji: 1-2 simple emoji
-- Target: Educate + soft nudge"""
+- Target: Informative friend sharing knowledge"""
 
         elif level == 2:
             style = """GAYA Level 2 - Persuasive Recommendation:
