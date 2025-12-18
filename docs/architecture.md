@@ -41,8 +41,9 @@ graph TD
   - Maintains WhatsApp connection via Baileys.
   - Detects forwarded FGB broadcasts using regex patterns.
   - Handles interactive conversation flow (YES / EDIT DULU / SCHEDULE).
+  - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
   - Executes final broadcasts to target groups.
-  - Manages conversation state.
+  - Manages conversation state (single and bulk modes).
 
 ### 2. AI Processor Service (Python + FastAPI)
 - **Role**: Logic core for parsing and broadcast generation.

@@ -11,6 +11,8 @@ const fs_1 = __importDefault(require("fs"));
 const fs_2 = require("fs");
 const baileysLoader_1 = require("./baileysLoader");
 const logger = (0, pino_1.default)({ level: process.env.LOG_LEVEL || 'info' });
+// Utility function for delays
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 class MessageHandler {
     constructor(sock, ownerJidOrList, aiClient, mediaPath = './media', baileysPromise = (0, baileysLoader_1.loadBaileys)()) {
         this.sock = sock;
@@ -18,6 +20,7 @@ class MessageHandler {
         this.mediaPath = mediaPath;
         this.baileysPromise = baileysPromise;
         this.pendingState = null;
+        this.bulkState = null;
         this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
         this.targetGroupJid = process.env.TARGET_GROUP_JID || null;
         if (this.targetGroupJid) {
@@ -68,11 +71,23 @@ class MessageHandler {
                 if (handled)
                     return;
             }
+            // Check for bulk state responses (YES/CANCEL/SCHEDULE)
+            if (this.bulkState && this.bulkState.state === 'preview_pending') {
+                const handled = await this.handleBulkResponse(from, messageText);
+                if (handled)
+                    return;
+            }
             // Detect if this is an FGB broadcast
             const detection = (0, detector_1.detectFGBBroadcast)(message);
             if (detection.isFGBBroadcast) {
                 logger.info('FGB broadcast detected!');
-                await this.processFGBBroadcast(message, detection);
+                // If bulk mode is active, collect instead of single process
+                if (this.bulkState && this.bulkState.state === 'collecting') {
+                    await this.collectBulkItem(from, message, detection);
+                }
+                else {
+                    await this.processFGBBroadcast(message, detection);
+                }
             }
             else {
                 logger.debug('Not an FGB broadcast, ignoring');
@@ -110,6 +125,12 @@ class MessageHandler {
                 case '/getmarkup':
                     await this.getMarkup(from);
                     return true;
+                case '/bulk':
+                    await this.startBulkMode(from, args);
+                    return true;
+                case '/done':
+                    await this.finishBulkCollection(from);
+                    return true;
                 default:
                     return false;
             }
@@ -133,10 +154,20 @@ class MessageHandler {
 /getmarkup - Lihat markup harga saat ini
 /cancel - Batalkan pending draft
 
-*Cara pakai:*
+*Bulk Mode:*
+/bulk [1|2|3] - Mulai bulk mode (default level 2)
+/done - Selesai collect, mulai proses
+
+*Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
 2. Bot akan generate draft dengan harga +markup
 3. Reply YES untuk kirim ke grup
+
+*Cara pakai (Bulk):*
+1. Kirim /bulk atau /bulk 3 untuk level racun
+2. Forward banyak broadcast FGB
+3. Kirim /done untuk proses semua
+4. Preview akan muncul, reply YES/SCHEDULE X
 
 *Tips:*
 - JID grup format: 120363XXXXX@g.us
@@ -527,6 +558,360 @@ Balas dengan angka *1*, *2*, atau *3*`;
                     logger.error(`Failed to cleanup media ${filepath}:`, err);
                 }
             }
+        }
+    }
+    // ==================== BULK MODE METHODS ====================
+    async startBulkMode(from, args) {
+        // Parse level from args (default to 2)
+        let level = 2;
+        if (args.trim()) {
+            const parsed = parseInt(args.trim());
+            if ([1, 2, 3].includes(parsed)) {
+                level = parsed;
+            }
+        }
+        // Clear any existing states
+        this.clearPendingState();
+        this.clearBulkState();
+        // Initialize bulk state
+        this.bulkState = {
+            active: true,
+            level,
+            items: [],
+            startedAt: Date.now(),
+            state: 'collecting'
+        };
+        // Set 2-minute timeout
+        this.bulkState.timeoutId = setTimeout(async () => {
+            if (this.bulkState && this.bulkState.state === 'collecting') {
+                await this.finishBulkCollection(from);
+            }
+        }, 2 * 60 * 1000);
+        const levelNames = ['', 'Standard', 'Recommended', 'Racun 🔥'];
+        await this.sock.sendMessage(from, {
+            text: `📦 *Bulk Mode Aktif* (Level ${level}: ${levelNames[level]})
+
+Silakan forward broadcast FGB.
+Bot akan mengumpulkan semua message secara diam-diam.
+
+Kirim /done kalau sudah selesai.
+(atau otomatis proses setelah 2 menit tanpa aktivitas)`
+        });
+        logger.info(`Bulk mode started, level ${level}`);
+    }
+    async collectBulkItem(from, message, detection) {
+        if (!this.bulkState)
+            return;
+        // Reset timeout on each new item
+        if (this.bulkState.timeoutId) {
+            clearTimeout(this.bulkState.timeoutId);
+            this.bulkState.timeoutId = setTimeout(async () => {
+                if (this.bulkState && this.bulkState.state === 'collecting') {
+                    await this.finishBulkCollection(from);
+                }
+            }, 2 * 60 * 1000);
+        }
+        const mediaPaths = [];
+        try {
+            // Download media if present
+            if (detection.hasMedia && detection.mediaMessages.length > 0) {
+                const { downloadMediaMessage } = await this.baileysPromise;
+                let mediaIndex = 0;
+                for (const mediaMsg of detection.mediaMessages) {
+                    try {
+                        const buffer = await downloadMediaMessage({ message: mediaMsg }, 'buffer', {});
+                        let extension = 'bin';
+                        if (mediaMsg.imageMessage)
+                            extension = 'jpg';
+                        else if (mediaMsg.videoMessage)
+                            extension = 'mp4';
+                        const timestamp = Date.now();
+                        const filename = `bulk_${timestamp}_${mediaIndex}.${extension}`;
+                        const filepath = path_1.default.join(this.mediaPath, filename);
+                        await fs_2.promises.writeFile(filepath, buffer);
+                        mediaPaths.push(filepath);
+                        mediaIndex++;
+                    }
+                    catch (error) {
+                        logger.error('Failed to download media in bulk:', error);
+                    }
+                }
+            }
+            // Add to bulk items
+            this.bulkState.items.push({
+                rawText: detection.text,
+                mediaPaths
+            });
+            const count = this.bulkState.items.length;
+            await this.sock.sendMessage(from, { text: `✓ ${count}` });
+            logger.info(`Bulk item ${count} collected`);
+        }
+        catch (error) {
+            logger.error('Error collecting bulk item:', error);
+            // Cleanup media on error
+            for (const filepath of mediaPaths) {
+                try {
+                    await fs_2.promises.unlink(filepath);
+                }
+                catch (err) {
+                    logger.error(`Failed to cleanup: ${filepath}`, err);
+                }
+            }
+        }
+    }
+    async finishBulkCollection(from) {
+        if (!this.bulkState) {
+            await this.sock.sendMessage(from, {
+                text: '❌ Tidak ada bulk mode yang aktif. Gunakan /bulk untuk memulai.'
+            });
+            return;
+        }
+        // Clear timeout
+        if (this.bulkState.timeoutId) {
+            clearTimeout(this.bulkState.timeoutId);
+        }
+        if (this.bulkState.items.length === 0) {
+            await this.sock.sendMessage(from, {
+                text: '❌ Tidak ada broadcast yang dikumpulkan. Bulk mode dibatalkan.'
+            });
+            this.clearBulkState();
+            return;
+        }
+        await this.sock.sendMessage(from, {
+            text: `⏳ Memproses ${this.bulkState.items.length} broadcast...`
+        });
+        await this.processBulkItems(from);
+    }
+    async processBulkItems(from) {
+        if (!this.bulkState)
+            return;
+        const level = this.bulkState.level;
+        let successCount = 0;
+        let failedItems = [];
+        for (let i = 0; i < this.bulkState.items.length; i++) {
+            const item = this.bulkState.items[i];
+            try {
+                // Parse
+                const parsedData = await this.aiClient.parse(item.rawText, item.mediaPaths.length);
+                item.parsedData = parsedData;
+                // Generate
+                const generated = await this.aiClient.generate(parsedData, level);
+                item.generated = { draft: generated.draft };
+                successCount++;
+                logger.info(`Bulk item ${i + 1} processed: ${parsedData.title || 'Untitled'}`);
+            }
+            catch (error) {
+                logger.error(`Failed to process bulk item ${i + 1}:`, error);
+                item.generated = { draft: '', error: error.message };
+                failedItems.push(item.parsedData?.title || `Item ${i + 1}`);
+            }
+        }
+        // Show warning if any failed
+        if (failedItems.length > 0) {
+            await this.sock.sendMessage(from, {
+                text: `⚠️ *Warning*: ${failedItems.length} of ${this.bulkState.items.length} failed to generate\n${failedItems.map(t => `- ❌ "${t}"`).join('\n')}\n\nContinuing with ${successCount} successful broadcasts.`
+            });
+        }
+        if (successCount === 0) {
+            await this.sock.sendMessage(from, {
+                text: '❌ Semua broadcast gagal diproses. Bulk mode dibatalkan.'
+            });
+            this.clearBulkState();
+            return;
+        }
+        // Generate and send preview
+        this.bulkState.state = 'preview_pending';
+        await this.sendBulkPreview(from);
+    }
+    async sendBulkPreview(from) {
+        if (!this.bulkState)
+            return;
+        const successItems = this.bulkState.items.filter(item => item.generated && !item.generated.error);
+        const levelNames = ['', 'Standard', 'Recommended', 'Racun 🔥'];
+        let preview = `📦 *BULK PREVIEW* (${successItems.length} broadcasts, Level ${this.bulkState.level}: ${levelNames[this.bulkState.level]})\n\n`;
+        for (let i = 0; i < successItems.length; i++) {
+            const item = successItems[i];
+            const title = item.parsedData?.title || 'Untitled';
+            const draft = item.generated?.draft || '';
+            // Truncate draft for preview (first 200 chars)
+            const draftPreview = draft.length > 200
+                ? draft.substring(0, 200) + '...'
+                : draft;
+            preview += `━━━━━━━━━━━━━━━━━━━━\n`;
+            preview += `${i + 1}️⃣ *${title}*\n`;
+            preview += `${draftPreview}\n\n`;
+        }
+        preview += `━━━━━━━━━━━━━━━━━━━━\n`;
+        preview += `Reply:\n`;
+        preview += `• *YES* - Kirim semua sekarang (random 15-30 detik)\n`;
+        preview += `• *SCHEDULE 30* - Jadwalkan tiap 30 menit\n`;
+        preview += `• *CANCEL* - Batalkan semua`;
+        // Split message if too long (WhatsApp limit ~4000 chars)
+        if (preview.length > 4000) {
+            // Send in chunks
+            const chunks = preview.match(/.{1,3900}/gs) || [preview];
+            for (const chunk of chunks) {
+                await this.sock.sendMessage(from, { text: chunk });
+            }
+        }
+        else {
+            await this.sock.sendMessage(from, { text: preview });
+        }
+    }
+    async handleBulkResponse(from, text) {
+        if (!this.bulkState || this.bulkState.state !== 'preview_pending')
+            return false;
+        const normalizedText = text.toLowerCase().trim();
+        // YES - send immediately
+        if (normalizedText === 'yes' || normalizedText === 'y' || normalizedText === 'ya') {
+            await this.sendBulkBroadcasts(from);
+            return true;
+        }
+        // SCHEDULE X
+        if (normalizedText.startsWith('schedule')) {
+            const parts = normalizedText.split(/\s+/);
+            const minutes = parts[1] ? parseInt(parts[1]) : 30;
+            if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
+                await this.sock.sendMessage(from, {
+                    text: '❌ Interval tidak valid. Contoh: SCHEDULE 30 (untuk 30 menit)'
+                });
+                return true;
+            }
+            await this.scheduleBulkBroadcasts(from, minutes);
+            return true;
+        }
+        // CANCEL
+        if (normalizedText.includes('cancel') || normalizedText.includes('batal')) {
+            await this.sock.sendMessage(from, { text: '❌ Bulk mode dibatalkan.' });
+            this.clearBulkState();
+            return true;
+        }
+        return false;
+    }
+    async sendBulkBroadcasts(from) {
+        if (!this.bulkState || !this.targetGroupJid) {
+            if (!this.targetGroupJid) {
+                await this.sock.sendMessage(from, {
+                    text: '❌ TARGET_GROUP_JID belum di-set.'
+                });
+            }
+            this.clearBulkState();
+            return;
+        }
+        this.bulkState.state = 'sending';
+        const successItems = this.bulkState.items.filter(item => item.generated && !item.generated.error);
+        await this.sock.sendMessage(from, {
+            text: `⏳ Mengirim ${successItems.length} broadcast ke grup...`
+        });
+        let sentCount = 0;
+        for (let i = 0; i < successItems.length; i++) {
+            const item = successItems[i];
+            try {
+                // Send to group
+                if (item.mediaPaths.length > 0 && fs_1.default.existsSync(item.mediaPaths[0])) {
+                    await this.sock.sendMessage(this.targetGroupJid, {
+                        image: { url: item.mediaPaths[0] },
+                        caption: item.generated?.draft || ''
+                    });
+                }
+                else {
+                    await this.sock.sendMessage(this.targetGroupJid, {
+                        text: item.generated?.draft || ''
+                    });
+                }
+                sentCount++;
+                logger.info(`Bulk broadcast ${i + 1}/${successItems.length} sent`);
+                // Random delay 15-30 seconds (except last item)
+                if (i < successItems.length - 1) {
+                    const delay = 15000 + Math.random() * 15000;
+                    await sleep(delay);
+                }
+            }
+            catch (error) {
+                logger.error(`Failed to send bulk item ${i + 1}:`, error);
+            }
+        }
+        await this.sock.sendMessage(from, {
+            text: `✅ ${sentCount}/${successItems.length} broadcast terkirim ke grup!`
+        });
+        this.clearBulkState();
+    }
+    async scheduleBulkBroadcasts(from, intervalMinutes) {
+        if (!this.bulkState || !this.targetGroupJid) {
+            if (!this.targetGroupJid) {
+                await this.sock.sendMessage(from, {
+                    text: '❌ TARGET_GROUP_JID belum di-set.'
+                });
+            }
+            this.clearBulkState();
+            return;
+        }
+        const successItems = this.bulkState.items.filter(item => item.generated && !item.generated.error);
+        // Schedule with setTimeout (in-memory, will be lost on restart)
+        const schedules = [];
+        const now = new Date();
+        for (let i = 0; i < successItems.length; i++) {
+            const item = successItems[i];
+            const delayMs = i * intervalMinutes * 60 * 1000;
+            const scheduledTime = new Date(now.getTime() + delayMs);
+            // Capture in closure
+            const capturedItem = item;
+            const capturedIndex = i;
+            const targetJid = this.targetGroupJid;
+            const sock = this.sock;
+            setTimeout(async () => {
+                try {
+                    if (capturedItem.mediaPaths.length > 0 && fs_1.default.existsSync(capturedItem.mediaPaths[0])) {
+                        await sock.sendMessage(targetJid, {
+                            image: { url: capturedItem.mediaPaths[0] },
+                            caption: capturedItem.generated?.draft || ''
+                        });
+                    }
+                    else {
+                        await sock.sendMessage(targetJid, {
+                            text: capturedItem.generated?.draft || ''
+                        });
+                    }
+                    logger.info(`Scheduled broadcast ${capturedIndex + 1} sent`);
+                }
+                catch (error) {
+                    logger.error(`Failed to send scheduled broadcast ${capturedIndex + 1}:`, error);
+                }
+            }, delayMs);
+            const timeStr = scheduledTime.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            schedules.push(`${i + 1}. ${item.parsedData?.title || 'Untitled'} - ${timeStr}`);
+        }
+        await this.sock.sendMessage(from, {
+            text: `📅 *${successItems.length} broadcast dijadwalkan*\nInterval: ${intervalMinutes} menit\n\n${schedules.join('\n')}\n\n⚠️ Jadwal hilang jika bot restart.`
+        });
+        // Clear bulk state but don't cleanup media yet (they'll be sent later)
+        // We need to keep media paths accessible
+        this.bulkState = null;
+    }
+    clearBulkState() {
+        if (this.bulkState) {
+            // Clear timeout
+            if (this.bulkState.timeoutId) {
+                clearTimeout(this.bulkState.timeoutId);
+            }
+            // Cleanup media files (only if not scheduled)
+            for (const item of this.bulkState.items) {
+                for (const filepath of item.mediaPaths) {
+                    try {
+                        if (fs_1.default.existsSync(filepath)) {
+                            fs_1.default.unlinkSync(filepath);
+                            logger.debug(`Cleaned up bulk media: ${filepath}`);
+                        }
+                    }
+                    catch (error) {
+                        logger.error(`Failed to cleanup bulk media ${filepath}:`, error);
+                    }
+                }
+            }
+            this.bulkState = null;
         }
     }
 }

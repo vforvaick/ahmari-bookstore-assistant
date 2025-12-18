@@ -7,6 +7,41 @@ All notable changes to this project will be documented in this file.
 ### Planned
 - Persistence for conversation state.
 - Documentation for VPS deployment.
+- Persist scheduled broadcasts to database (currently in-memory only).
+
+## [1.5.0] - 2025-12-18
+
+### Added
+- **Bulk Forward Mode**: Handle multiple FGB broadcasts at once.
+  - `/bulk [1|2|3]` - Start bulk mode with specified level (default: 2)
+  - `/done` - Finish collecting, start processing
+  - Quiet collection with counter feedback (✓ 1, ✓ 2, ...)
+  - Consolidated text-only preview (no images in preview)
+  - 2-minute auto-timeout if no `/done` sent
+
+- **Bulk Send Options**:
+  - `YES` - Send all immediately with random 15-30 second delays
+  - `SCHEDULE X` - Schedule broadcasts X minutes apart (e.g., `SCHEDULE 47`)
+  - `CANCEL` - Cancel all pending broadcasts
+
+- **Error Handling for Bulk**: Failed items are skipped with warning, successful items continue processing.
+
+### Changed
+- **Help Command**: Updated with bulk mode instructions and usage examples.
+- **Message Handler**: Extended state machine to support bulk collection, preview, and sending states.
+
+### Technical Details
+- Added `BulkState` and `BulkItem` interfaces
+- Added timeout reset on each new bulk item
+- Schedule uses in-memory setTimeout (lost on restart - documented limitation)
+
+### Files Modified
+- `wa-bot/src/messageHandler.ts` (bulk mode implementation)
+
+### Reference
+- Session: eb3d7a6e-e6f1-4359-98e1-9c8ac1f6a0b6
+
+---
 
 ## [1.4.0] - 2025-12-18
 
