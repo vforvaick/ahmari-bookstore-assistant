@@ -133,14 +133,21 @@ class BookResearcher:
             )
         
         # Enhance query for book search
-        search_query = f"{query} book children"
+        # If query seems specific (has publisher), trust it more.
+        # Otherwise, help it focus on children's books and filter noise.
+        base_query = f"{query} children's book"
+        
+        # Exclude common noise sites
+        exclusions = "-site:reddit.com -site:pinterest.com -site:youtube.com -site:quora.com"
+        
+        search_query = f"{base_query} {exclusions}"
         
         params = {
             'key': self.api_key,
             'cx': self.search_engine_id,
             'q': search_query,
             'num': min(max_results, 10),  # API limit is 10
-            'searchType': 'image' if False else None,  # Text search, not image
+            'searchType': None,  # Standard web search to find metadatarich pages (amazon, goodreads, publisher sites)
         }
         # Remove None values
         params = {k: v for k, v in params.items() if v is not None}
