@@ -111,19 +111,30 @@ export class WhatsAppClient {
     // Listen for messages
     this.sock.ev.on('messages.upsert', async ({ messages }) => {
       for (const message of messages) {
-        // Log incoming message for debugging
-        if (process.env.LOG_LEVEL === 'debug') {
-          logger.debug({
-            fromMe: message.key.fromMe,
-            remoteJid: message.key.remoteJid,
-            pushName: message.pushName
-          }, 'Incoming message');
-        }
+        const remoteJid = message.key.remoteJid || '';
 
-        // ALWAYS ignore messages from self (fromMe = true)
-        // This prevents the bot from processing its own sent messages
+        // Log incoming message for debugging (always log at info level during debug)
+        logger.info({
+          fromMe: message.key.fromMe,
+          remoteJid: remoteJid,
+          pushName: message.pushName,
+          ownerJids: ownerJids
+        }, 'Incoming message event');
+
+        // For self-chat (user sending to their own number), fromMe is true
+        // We still want to process these if the sender is the owner
+        // Only skip if this is genuinely a bot-sent message (not owner self-chat)
         if (message.key.fromMe) {
-          continue;
+          // Check if this is the owner's self-chat (remoteJid matches owner)
+          const isOwnerSelfChat = ownerJids.some(jid =>
+            remoteJid.includes(jid.split('@')[0]) || jid.includes(remoteJid.split('@')[0])
+          );
+
+          if (!isOwnerSelfChat) {
+            logger.debug(`Skipping fromMe message (not owner self-chat): ${remoteJid}`);
+            continue;
+          }
+          logger.info(`Processing owner self-chat message: ${remoteJid}`);
         }
 
         // Handle message
