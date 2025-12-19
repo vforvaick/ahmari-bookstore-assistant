@@ -38,6 +38,21 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 
 ## Recently Completed
 
+- **Web Research Mode** (2025-12-19)
+  - ✅ `/new <book title>` command for creating promos from scratch
+  - ✅ Google Custom Search API integration
+  - ✅ Multi-result selection flow
+  - ✅ User-confirmed price/format/ETA details
+  - ✅ Auto-download book cover images
+
+- **Bulk Forward Mode** (2025-12-18)
+  - ✅ `/bulk` command for batch processing
+  - ✅ Scheduled sending with custom intervals
+
+- **3-Tier Recommendation System** (2025-12-18)
+  - ✅ Level 1/2/3 tone selection
+  - ✅ "Top Pick" racun mode
+
 - **SQLite Session Migration** (2025-12-08)
   - ✅ Migrated from file-based to SQLite-based auth state
   - ✅ Improved reliability across Docker/VPS environments

@@ -1,6 +1,6 @@
 import pino from 'pino';
 import { detectFGBBroadcast, DetectionResult } from './detector';
-import { AIClient, GenerateResponse } from './aiClient';
+import { AIClient, GenerateResponse, BookSearchResult, BookSearchResponse } from './aiClient';
 import path from 'path';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -40,6 +40,25 @@ interface BulkState {
   state: 'collecting' | 'preview_pending' | 'sending';
 }
 
+// Research state for /new command (web research flow)
+interface ResearchState {
+  state: 'search_pending' | 'selection_pending' | 'details_pending' | 'draft_pending';
+  query?: string;
+  results?: BookSearchResult[];
+  selectedBook?: BookSearchResult;
+  imagePath?: string;  // Downloaded or user-provided image
+  details?: {
+    price: number;
+    format: string;  // Required, not optional
+    eta?: string;
+    closeDate?: string;
+    minOrder?: string;
+  };
+  level: number;  // Recommendation level
+  draft?: string;
+  timestamp: number;
+}
+
 // Utility function for delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -47,6 +66,7 @@ export class MessageHandler {
   private ownerJids: string[];
   private pendingState: PendingState | null = null;
   private bulkState: BulkState | null = null;
+  private researchState: ResearchState | null = null;  // For /new command
   private targetGroupJid: string | null;
 
   constructor(
@@ -120,6 +140,12 @@ export class MessageHandler {
         if (handled) return;
       }
 
+      // Check for research state responses (/new flow)
+      if (this.researchState) {
+        const handled = await this.handleResearchResponse(from, messageText);
+        if (handled) return;
+      }
+
       // Detect if this is an FGB broadcast
       const detection = detectFGBBroadcast(message);
 
@@ -184,6 +210,10 @@ export class MessageHandler {
           await this.finishBulkCollection(from);
           return true;
 
+        case '/new':
+          await this.startBookResearch(from, args);
+          return true;
+
         default:
           return false;
       }
@@ -211,6 +241,9 @@ export class MessageHandler {
 /bulk [1|2|3] - Mulai bulk mode (default level 2)
 /done - Selesai collect, mulai proses
 
+*Research Mode (Buat dari Nol):*
+/new <judul buku> - Cari buku di internet
+
 *Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
 2. Bot akan generate draft dengan harga +markup
@@ -221,6 +254,12 @@ export class MessageHandler {
 2. Forward banyak broadcast FGB
 3. Kirim /done untuk proses semua
 4. Preview akan muncul, reply YES/SCHEDULE X
+
+*Cara pakai (/new):*
+1. Kirim /new Encyclopedia Britannica Kids
+2. Pilih buku dengan reply angka
+3. Isi detail: 350000 hb jan 26 close 25 dec
+4. Review draft, reply YES untuk kirim
 
 *Tips:*
 - JID grup format: 120363XXXXX@g.us
@@ -1098,6 +1137,367 @@ Kirim /done kalau sudah selesai.
       }
 
       this.bulkState = null;
+    }
+  }
+
+  // ==================== RESEARCH MODE METHODS (/new) ====================
+
+  private async startBookResearch(from: string, query: string) {
+    if (!query.trim()) {
+      await this.sock.sendMessage(from, {
+        text: `❌ Penggunaan: /new <judul buku>\n\nContoh: /new Encyclopedia Britannica Kids`
+      });
+      return;
+    }
+
+    // Clear any existing states
+    this.clearPendingState();
+    this.clearBulkState();
+    this.clearResearchState();
+
+    try {
+      await this.sock.sendMessage(from, {
+        text: `🔍 Mencari: "${query}"...\n\nMohon tunggu...`
+      });
+
+      // Call AI Processor to search books
+      const searchResponse = await this.aiClient.searchBooks(query, 5);
+
+      if (searchResponse.count === 0) {
+        await this.sock.sendMessage(from, {
+          text: `❌ Tidak ditemukan buku dengan kata kunci "${query}".\n\nCoba kata kunci lain ya!`
+        });
+        return;
+      }
+
+      // Store research state
+      this.researchState = {
+        state: 'selection_pending',
+        query,
+        results: searchResponse.results,
+        level: 2,  // Default to level 2
+        timestamp: Date.now()
+      };
+
+      // Build results message
+      let resultsMsg = `📚 *Ditemukan ${searchResponse.count} buku:*\n\n`;
+      searchResponse.results.forEach((book, i) => {
+        const author = book.author ? ` - ${book.author}` : '';
+        const publisher = book.publisher ? ` (${book.publisher})` : '';
+        resultsMsg += `${i + 1}. *${book.title}*${author}${publisher}\n`;
+        if (book.snippet) {
+          // Truncate snippet
+          const shortSnippet = book.snippet.length > 100
+            ? book.snippet.substring(0, 100) + '...'
+            : book.snippet;
+          resultsMsg += `   _${shortSnippet}_\n`;
+        }
+        resultsMsg += '\n';
+      });
+
+      resultsMsg += `---\nBalas dengan *angka* (1-${searchResponse.count}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`;
+
+      await this.sock.sendMessage(from, { text: resultsMsg });
+
+      logger.info(`Book search results shown: ${searchResponse.count} books`);
+
+    } catch (error: any) {
+      logger.error('Book search error:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal mencari buku: ${error.message}\n\nPastikan GOOGLE_SEARCH_API_KEY sudah dikonfigurasi.`
+      });
+      this.clearResearchState();
+    }
+  }
+
+  private async handleResearchResponse(from: string, text: string): Promise<boolean> {
+    if (!this.researchState) return false;
+
+    // Check if state is expired (10 minutes for research)
+    if (Date.now() - this.researchState.timestamp > 10 * 60 * 1000) {
+      logger.info('Research state expired');
+      this.clearResearchState();
+      return false;
+    }
+
+    // STATE 1: Waiting for book selection (number)
+    if (this.researchState.state === 'selection_pending') {
+      const num = parseInt(text.trim());
+
+      if (!isNaN(num) && num >= 1 && num <= (this.researchState.results?.length || 0)) {
+        const selectedBook = this.researchState.results![num - 1];
+        this.researchState.selectedBook = selectedBook;
+        this.researchState.state = 'details_pending';
+        this.researchState.timestamp = Date.now();
+
+        // Try to download image
+        if (selectedBook.image_url) {
+          try {
+            const imagePath = await this.aiClient.downloadResearchImage(selectedBook.image_url);
+            if (imagePath) {
+              this.researchState.imagePath = imagePath;
+            }
+          } catch (e) {
+            logger.warn('Failed to download book image:', e);
+          }
+        }
+
+        await this.sock.sendMessage(from, {
+          text: `✅ Dipilih: *${selectedBook.title}*\n${selectedBook.publisher ? `Publisher: ${selectedBook.publisher}\n` : ''}\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
+        });
+        return true;
+      }
+
+      // Check for cancel
+      if (text.includes('cancel') || text.includes('batal')) {
+        await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+        this.clearResearchState();
+        return true;
+      }
+
+      // Invalid selection
+      await this.sock.sendMessage(from, {
+        text: `⚠️ Pilih angka 1-${this.researchState.results?.length}.\nAtau kirim /cancel untuk batal.`
+      });
+      return true;
+    }
+
+    // STATE 2: Waiting for details (price, format, eta, close)
+    if (this.researchState.state === 'details_pending') {
+      // Check for cancel
+      if (text.includes('cancel') || text.includes('batal')) {
+        await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+        this.clearResearchState();
+        return true;
+      }
+
+      // Parse details: "350000 hb jan 26 close 25 dec"
+      const details = this.parseResearchDetails(text);
+
+      if (!details || !details.price) {
+        await this.sock.sendMessage(from, {
+          text: `⚠️ Format tidak valid.\n\nContoh: 350000 hb jan 26 close 25 dec\n\nMinimum: <harga> (angka)`
+        });
+        return true;
+      }
+
+      this.researchState.details = details;
+
+      // Ask for level
+      await this.sock.sendMessage(from, {
+        text: `✅ Detail tersimpan:\n💰 Harga: Rp ${details.price.toLocaleString('id-ID')}\n📦 Format: ${details.format || 'HB'}\n📅 ETA: ${details.eta || '-'}\n🔒 Close: ${details.closeDate || '-'}\n\n---\nPilih level rekomendasi:\n\n1️⃣ *Standard* - Informatif\n2️⃣ *Recommended* - Persuasif\n3️⃣ *Top Pick* ⭐ - Racun!\n\nBalas dengan angka *1*, *2*, atau *3*`
+      });
+
+      this.researchState.state = 'draft_pending';
+      this.researchState.timestamp = Date.now();
+      return true;
+    }
+
+    // STATE 3: Waiting for level selection, then generate
+    if (this.researchState.state === 'draft_pending' && !this.researchState.draft) {
+      // Check for level selection
+      if (['1', '2', '3'].includes(text.trim())) {
+        const level = parseInt(text.trim());
+        this.researchState.level = level;
+
+        await this.sock.sendMessage(from, {
+          text: `⏳ Generating level ${level} draft...`
+        });
+
+        try {
+          const generated = await this.aiClient.generateFromResearch({
+            book: this.researchState.selectedBook!,
+            price_main: this.researchState.details!.price,
+            format: this.researchState.details!.format || 'HB',
+            eta: this.researchState.details!.eta,
+            close_date: this.researchState.details!.closeDate,
+            min_order: this.researchState.details!.minOrder,
+            level
+          });
+
+          this.researchState.draft = generated.draft;
+
+          // Send draft with image if available
+          const imagePath = this.researchState.imagePath;
+          if (imagePath && fs.existsSync(imagePath)) {
+            await this.sock.sendMessage(from, {
+              image: { url: imagePath },
+              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+            });
+          } else {
+            await this.sock.sendMessage(from, {
+              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+            });
+          }
+
+          logger.info('Research draft generated');
+          return true;
+
+        } catch (error: any) {
+          logger.error('Research generation error:', error);
+          await this.sock.sendMessage(from, {
+            text: `❌ Gagal generate draft: ${error.message}`
+          });
+          this.clearResearchState();
+          return true;
+        }
+      }
+
+      // Check for cancel
+      if (text.includes('cancel') || text.includes('batal')) {
+        await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+        this.clearResearchState();
+        return true;
+      }
+
+      await this.sock.sendMessage(from, {
+        text: '⚠️ Pilih level: 1, 2, atau 3'
+      });
+      return true;
+    }
+
+    // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL
+    if (this.researchState.state === 'draft_pending' && this.researchState.draft) {
+      // YES - send to group
+      if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
+        await this.sendResearchBroadcast(from);
+        return true;
+      }
+
+      // EDIT
+      if (text.includes('edit') || text.includes('ubah') || text.includes('ganti')) {
+        await this.sock.sendMessage(from, {
+          text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
+        });
+        this.clearResearchState();
+        return true;
+      }
+
+      // CANCEL
+      if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+        await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
+        this.clearResearchState();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private parseResearchDetails(text: string): {
+    price: number;
+    format: string;  // Always has a value (defaults to HB)
+    eta?: string;
+    closeDate?: string;
+    minOrder?: string;
+  } | null {
+    const parts = text.toLowerCase().split(/\s+/);
+
+    if (parts.length === 0) return null;
+
+    // First part should be price
+    const price = parseInt(parts[0].replace(/[^\d]/g, ''));
+    if (isNaN(price) || price <= 0) return null;
+
+    let format: string | undefined;
+    let eta: string | undefined;
+    let closeDate: string | undefined;
+    let minOrder: string | undefined;
+
+    // Look for format (hb, pb, bb)
+    const formatMatch = parts.find(p => ['hb', 'pb', 'bb'].includes(p));
+    if (formatMatch) {
+      format = formatMatch.toUpperCase();
+    }
+
+    // Look for "close" keyword and date after it
+    const closeIndex = parts.findIndex(p => p === 'close');
+    if (closeIndex !== -1 && closeIndex < parts.length - 1) {
+      // Join remaining parts as close date (e.g., "25 dec")
+      closeDate = parts.slice(closeIndex + 1, closeIndex + 3).join(' ');
+    }
+
+    // Look for month patterns for ETA (jan, feb, mar, etc.)
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i] !== 'close' && months.some(m => parts[i].includes(m))) {
+        // Found month, check if next part is year
+        const monthPart = parts[i];
+        const yearPart = parts[i + 1];
+
+        if (yearPart && /^\d{2,4}$/.test(yearPart)) {
+          eta = `${monthPart.charAt(0).toUpperCase() + monthPart.slice(1)} '${yearPart.slice(-2)}`;
+        } else {
+          eta = monthPart.charAt(0).toUpperCase() + monthPart.slice(1);
+        }
+        break;
+      }
+    }
+
+    return { price, format: format || 'HB', eta, closeDate, minOrder };
+  }
+
+  private async sendResearchBroadcast(from: string) {
+    if (!this.researchState || !this.researchState.draft) {
+      await this.sock.sendMessage(from, {
+        text: '❌ Tidak ada draft yang pending.'
+      });
+      return;
+    }
+
+    if (!this.targetGroupJid) {
+      await this.sock.sendMessage(from, {
+        text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
+      });
+      this.clearResearchState();
+      return;
+    }
+
+    try {
+      const { draft, imagePath } = this.researchState;
+
+      // Send to target group
+      if (imagePath && fs.existsSync(imagePath)) {
+        await this.sock.sendMessage(this.targetGroupJid, {
+          image: { url: imagePath },
+          caption: draft || ''
+        });
+      } else {
+        await this.sock.sendMessage(this.targetGroupJid, {
+          text: draft || '(empty draft)'
+        });
+      }
+
+      logger.info(`Research broadcast sent to group: ${this.targetGroupJid}`);
+
+      await this.sock.sendMessage(from, {
+        text: `✅ Broadcast berhasil dikirim ke grup!`
+      });
+
+    } catch (error: any) {
+      logger.error('Failed to send research broadcast:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal kirim broadcast: ${error.message}`
+      });
+    } finally {
+      this.clearResearchState();
+    }
+  }
+
+  private clearResearchState() {
+    if (this.researchState) {
+      // Cleanup image if exists
+      if (this.researchState.imagePath) {
+        try {
+          if (fs.existsSync(this.researchState.imagePath)) {
+            fs.unlinkSync(this.researchState.imagePath);
+            logger.debug(`Cleaned up research image: ${this.researchState.imagePath}`);
+          }
+        } catch (error) {
+          logger.error(`Failed to cleanup research image:`, error);
+        }
+      }
+      this.researchState = null;
     }
   }
 }

@@ -30,3 +30,41 @@ class GenerateResponse(BaseModel):
     """Generated broadcast in Indonesian"""
     draft: str
     parsed_data: ParsedBroadcast
+
+
+# ============== Book Research Models ==============
+
+class BookSearchRequest(BaseModel):
+    """Request to search for books"""
+    query: str
+    max_results: int = 5
+
+
+class BookSearchResult(BaseModel):
+    """A single book search result from the web"""
+    title: str
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    source_url: str
+    snippet: Optional[str] = None
+
+
+class BookSearchResponse(BaseModel):
+    """Response containing book search results"""
+    query: str
+    results: List[BookSearchResult]
+    count: int
+
+
+class ResearchGenerateRequest(BaseModel):
+    """Request to generate promo from researched book"""
+    book: BookSearchResult              # Selected book from search
+    price_main: int                     # User-confirmed price (without markup)
+    format: str = "HB"                  # HB/PB/BB
+    eta: Optional[str] = None           # e.g., "Jan '26"
+    close_date: Optional[str] = None    # e.g., "25 Des"
+    min_order: Optional[str] = None     # e.g., "3 pcs"
+    level: int = 2                      # Recommendation level
+    custom_image_path: Optional[str] = None  # If user sends own image

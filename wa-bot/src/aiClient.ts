@@ -34,6 +34,35 @@ export interface GenerateResponse {
   parsed_data: ParsedBroadcast;
 }
 
+// ============== Book Research Interfaces ==============
+
+export interface BookSearchResult {
+  title: string;
+  author?: string;
+  publisher?: string;
+  description?: string;
+  image_url?: string;
+  source_url: string;
+  snippet?: string;
+}
+
+export interface BookSearchResponse {
+  query: string;
+  results: BookSearchResult[];
+  count: number;
+}
+
+export interface ResearchGenerateRequest {
+  book: BookSearchResult;
+  price_main: number;
+  format: string;
+  eta?: string;
+  close_date?: string;
+  min_order?: string;
+  level: number;
+  custom_image_path?: string;
+}
+
 export class AIClient {
   private client: AxiosInstance;
 
@@ -112,6 +141,51 @@ export class AIClient {
     } catch (error: any) {
       logger.error('Set markup failed:', error.message);
       throw new Error(`Failed to set markup: ${error.message}`);
+    }
+  }
+
+  // ============== Book Research Methods ==============
+
+  async searchBooks(query: string, maxResults: number = 5): Promise<BookSearchResponse> {
+    try {
+      logger.info(`Searching for books: "${query}"`);
+      const response = await this.client.post<BookSearchResponse>('/research', {
+        query,
+        max_results: maxResults,
+      });
+      logger.info(`Found ${response.data.count} books`);
+      return response.data;
+    } catch (error: any) {
+      logger.error('Book search failed:', error.message);
+      throw new Error(`Book search failed: ${error.message}`);
+    }
+  }
+
+  async generateFromResearch(request: ResearchGenerateRequest): Promise<GenerateResponse> {
+    try {
+      logger.info(`Generating promo from research: "${request.book.title}" (level=${request.level})`);
+      const response = await this.client.post<GenerateResponse>('/research/generate', request);
+      logger.info('Research generation successful');
+      return response.data;
+    } catch (error: any) {
+      logger.error('Research generation failed:', error.message);
+      throw new Error(`Research generation failed: ${error.message}`);
+    }
+  }
+
+  async downloadResearchImage(imageUrl: string): Promise<string | null> {
+    try {
+      logger.info(`Downloading research image...`);
+      const response = await this.client.post<{ status: string; filepath: string }>(
+        '/research/download-image',
+        null,
+        { params: { image_url: imageUrl } }
+      );
+      logger.info(`Image saved: ${response.data.filepath}`);
+      return response.data.filepath;
+    } catch (error: any) {
+      logger.error('Image download failed:', error.message);
+      return null;
     }
   }
 }

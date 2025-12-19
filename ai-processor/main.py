@@ -9,7 +9,11 @@ import os
 from parser import FGBParser
 from gemini_client import GeminiClient
 from output_formatter import OutputFormatter
-from models import ParsedBroadcast, GenerateRequest, GenerateResponse
+from book_researcher import BookResearcher
+from models import (
+    ParsedBroadcast, GenerateRequest, GenerateResponse,
+    BookSearchRequest, BookSearchResult, BookSearchResponse, ResearchGenerateRequest
+)
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +26,7 @@ class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
-app = FastAPI(title="AI Processor", version="2.0.0")
+app = FastAPI(title="AI Processor", version="2.1.0")
 
 # CORS middleware
 app.add_middleware(
@@ -37,6 +41,7 @@ app.add_middleware(
 parser = FGBParser()
 gemini_client = GeminiClient()  # Reads API keys from environment
 formatter = OutputFormatter(price_markup=settings.price_markup)
+book_researcher = BookResearcher()  # For /research endpoint
 
 class ParseRequest(BaseModel):
     text: str
@@ -53,9 +58,9 @@ async def health_check():
 async def root():
     return {
         "service": "AI Processor",
-        "version": "2.0.0",
-        "description": "Hybrid rule-based + AI broadcast generator",
-        "endpoints": ["/parse", "/generate", "/config", "/health"],
+        "version": "2.1.0",
+        "description": "Hybrid rule-based + AI broadcast generator with web research",
+        "endpoints": ["/parse", "/generate", "/research", "/research/generate", "/config", "/health"],
         "config": {
             "price_markup": formatter.price_markup
         }
@@ -161,3 +166,136 @@ async def extract_style():
         "status": "not_implemented",
         "message": "Style extraction will be implemented in future task"
     }
+
+
+# ==================== BOOK RESEARCH ENDPOINTS ====================
+
+@app.post("/research", response_model=BookSearchResponse)
+async def search_books(request: BookSearchRequest):
+    """
+    Search for books using Google Custom Search.
+    
+    Use this when no FGB raw material is available and you need to
+    create promotional material from scratch.
+    
+    Requires GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX environment variables.
+    """
+    import traceback
+    
+    try:
+        logger.info(f"Searching for books: '{request.query}'")
+        
+        results = await book_researcher.search_books(
+            query=request.query,
+            max_results=request.max_results
+        )
+        
+        logger.info(f"Found {len(results)} books")
+        
+        # Convert to response model
+        return BookSearchResponse(
+            query=request.query,
+            results=[BookSearchResult(**r.model_dump()) for r in results],
+            count=len(results)
+        )
+        
+    except ValueError as e:
+        # Configuration error (missing API keys)
+        logger.error(f"Configuration error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Search error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"Book search failed: {e}")
+
+
+@app.post("/research/generate", response_model=GenerateResponse)
+async def generate_from_research(request: ResearchGenerateRequest):
+    """
+    Generate promotional broadcast from web-researched book info.
+    
+    This endpoint takes a BookSearchResult (from /research) plus
+    user-provided details (price, format, ETA) and generates a
+    promotional message using the same format as FGB conversions.
+    
+    Workflow:
+    1. AI generates review paragraph based on book description
+    2. Rule-based formatter builds final output with price markup
+    """
+    import traceback
+    
+    try:
+        logger.info(f"Generating promo for researched book: '{request.book.title}' (level={request.level})")
+        
+        # Step 1: Create a ParsedBroadcast-like structure from research data
+        # This allows us to reuse the existing AI review generator
+        parsed_for_ai = ParsedBroadcast(
+            title=request.book.title,
+            publisher=request.book.publisher,
+            description_en=request.book.description or request.book.snippet,
+            format=request.format,
+            price_main=request.price_main,
+            eta=request.eta,
+            close_date=request.close_date,
+            min_order=request.min_order,
+            preview_links=[request.book.source_url] if request.book.source_url else [],
+            raw_text=f"Web research: {request.book.title}"
+        )
+        
+        # Step 2: Generate AI review (reuse existing method)
+        ai_response = await gemini_client.generate_review(
+            parsed_for_ai,
+            level=request.level
+        )
+        
+        logger.info(f"AI review generated, length: {len(ai_response.review)}")
+        
+        # Step 3: Determine publisher (provided > AI guess)
+        publisher = request.book.publisher or ai_response.publisher_guess
+        
+        # Step 4: Format final broadcast
+        draft = formatter.format_broadcast(
+            parsed_for_ai,
+            ai_response.review,
+            publisher_override=publisher,
+            level=request.level
+        )
+        
+        logger.info(f"Generated successfully, length: {len(draft)}")
+        
+        return GenerateResponse(
+            draft=draft,
+            parsed_data=parsed_for_ai
+        )
+        
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Research generation error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Generation from research failed: {e}"
+        )
+
+
+@app.post("/research/download-image")
+async def download_research_image(image_url: str):
+    """
+    Download book cover image from URL.
+    
+    Returns the local file path where the image was saved.
+    """
+    try:
+        logger.info(f"Downloading image: {image_url[:80]}...")
+        
+        filepath = await book_researcher.download_image(image_url)
+        
+        if filepath:
+            return {"status": "success", "filepath": filepath}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to download image")
+            
+    except Exception as e:
+        logger.error(f"Image download error: {e}")
+        raise HTTPException(status_code=500, detail=f"Image download failed: {e}")

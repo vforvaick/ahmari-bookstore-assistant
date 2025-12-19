@@ -9,6 +9,49 @@ All notable changes to this project will be documented in this file.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
 
+## [1.6.0] - 2025-12-19
+
+### Added
+- **Web Research Mode** (`/new` command): Create promotional materials from scratch when no FGB raw material is available.
+  - `/new <book title>` - Search for books using Google Custom Search API
+  - Shows multiple relevant results (up to 5), user picks by number
+  - User confirms/inputs details: price, format (HB/PB/BB), ETA, close date
+  - Auto-downloads book cover image from web (with option to use own image)
+  - Generates promo using same AI + template as FGB conversions
+  - Supports all 3 recommendation levels
+
+- **New AI Processor Endpoints**:
+  - `POST /research` - Search for books by title/query
+  - `POST /research/generate` - Generate promo from researched book + user details
+  - `POST /research/download-image` - Download book cover image from URL
+
+- **BookResearcher Module**: New Python module (`book_researcher.py`) for web research functionality.
+  - Google Custom Search API integration
+  - Automatic extraction of title, author, publisher, description, and cover image
+  - Known publisher detection (Usborne, DK, Britannica, etc.)
+
+### Changed
+- **Help Command**: Updated with `/new` command usage instructions.
+- **API Version**: AI Processor updated to v2.1.0.
+
+### Configuration Required
+- `GOOGLE_SEARCH_API_KEY` - Google Custom Search API key
+- `GOOGLE_SEARCH_CX` - Custom Search Engine ID
+
+### Files Modified
+- `ai-processor/book_researcher.py` (NEW)
+- `ai-processor/main.py` (new endpoints)
+- `ai-processor/models.py` (new Pydantic models)
+- `ai-processor/requirements.txt` (added httpx)
+- `wa-bot/src/aiClient.ts` (new methods)
+- `wa-bot/src/messageHandler.ts` (/new command + research state machine)
+- `.env.example` (new env vars)
+
+### Reference
+- Session: 5b1e830b-d4de-4275-9144-9697e44f6985
+
+---
+
 ## [1.5.0] - 2025-12-18
 
 ### Added

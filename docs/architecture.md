@@ -42,8 +42,9 @@ graph TD
   - Detects forwarded FGB broadcasts using regex patterns.
   - Handles interactive conversation flow (YES / EDIT DULU / SCHEDULE).
   - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
+  - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
   - Executes final broadcasts to target groups.
-  - Manages conversation state (single and bulk modes).
+  - Manages conversation state (single, bulk, and research modes).
 
 ### 2. AI Processor Service (Python + FastAPI)
 - **Role**: Logic core for parsing and broadcast generation.
@@ -56,7 +57,11 @@ graph TD
     - **Level 1 (Standard)**: Informative, soft-sell tone.
     - **Level 2 (Recommended)**: Persuasive, value-driven tone.
     - **Level 3 (Top Pick)**: "Racun Mode", high urgency, includes `⭐ Top Pick Ahmari Bookstore` marker.
-  - Provides REST API endpoints (`/parse`, `/generate`, `/config`) for the WA Bot.
+  - **Web Research** (v1.6.0):
+    - `book_researcher.py`: Google Custom Search API integration for finding book info.
+    - `/research` endpoint: Search books by title/query.
+    - `/research/generate` endpoint: Generate promo from researched book + user details.
+  - Provides REST API endpoints (`/parse`, `/generate`, `/research`, `/config`) for the WA Bot.
   - Runtime configurable price markup via `/config` endpoint.
 
 ### 3. Queue Scheduler Service (Node.js)
