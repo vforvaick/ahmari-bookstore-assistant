@@ -9,6 +9,8 @@ services:
     environment:
       - GEMINI_API_KEYS=${GEMINI_API_KEYS}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX}
     volumes:
       - sqlite-data:/app/data
       - ./ai-processor/config:/app/config:ro
