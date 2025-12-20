@@ -510,11 +510,11 @@ export class MessageHandler {
       if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
         await this.sock.sendMessage(from, {
           image: { url: mediaPaths[0] },
-          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
         });
       } else {
         await this.sock.sendMessage(from, {
-          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
         });
       }
     } catch (error: any) {
@@ -957,8 +957,10 @@ Kirim /done kalau sudah selesai.
 
     preview += `━━━━━━━━━━━━━━━━━━━━\n`;
     preview += `Reply:\n`;
-    preview += `• *YES* - Kirim semua sekarang (random 15-30 detik)\n`;
-    preview += `• *SCHEDULE 30* - Jadwalkan tiap 30 menit\n`;
+    preview += `• *YES* - Kirim ke PRODUCTION (random 15-30 detik)\n`;
+    preview += `• *YES DEV* - Kirim ke DEV\n`;
+    preview += `• *SCHEDULE 30* - Jadwalkan ke PRODUCTION tiap 30 menit\n`;
+    preview += `• *SCHEDULE DEV 30* - Jadwalkan ke DEV tiap 30 menit\n`;
     preview += `• *CANCEL* - Batalkan semua`;
 
     // Split message if too long (WhatsApp limit ~4000 chars)
@@ -990,7 +992,23 @@ Kirim /done kalau sudah selesai.
       return true;
     }
 
-    // SCHEDULE X
+    // SCHEDULE DEV X - schedule to dev group
+    if (normalizedText.startsWith('schedule dev')) {
+      const parts = normalizedText.split(/\s+/);
+      const minutes = parts[2] ? parseInt(parts[2]) : 30;
+
+      if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
+        await this.sock.sendMessage(from, {
+          text: '❌ Interval tidak valid. Contoh: SCHEDULE DEV 30 (untuk 30 menit)'
+        });
+        return true;
+      }
+
+      await this.scheduleBulkBroadcasts(from, minutes, this.devGroupJid || undefined);
+      return true;
+    }
+
+    // SCHEDULE X - schedule to production group
     if (normalizedText.startsWith('schedule')) {
       const parts = normalizedText.split(/\s+/);
       const minutes = parts[1] ? parseInt(parts[1]) : 30;
@@ -1079,9 +1097,13 @@ Kirim /done kalau sudah selesai.
     this.clearBulkState();
   }
 
-  private async scheduleBulkBroadcasts(from: string, intervalMinutes: number) {
-    if (!this.bulkState || !this.targetGroupJid) {
-      if (!this.targetGroupJid) {
+  private async scheduleBulkBroadcasts(from: string, intervalMinutes: number, targetJid?: string) {
+    // Use provided targetJid or default to production group
+    const sendToJid = targetJid || this.targetGroupJid;
+    const isDevGroup = targetJid === this.devGroupJid;
+
+    if (!this.bulkState || !sendToJid) {
+      if (!sendToJid) {
         await this.sock.sendMessage(from, {
           text: '❌ TARGET_GROUP_JID belum di-set.'
         });
@@ -1106,22 +1128,22 @@ Kirim /done kalau sudah selesai.
       // Capture in closure
       const capturedItem = item;
       const capturedIndex = i;
-      const targetJid = this.targetGroupJid!;
+      const capturedJid = sendToJid;  // Use sendToJid, not this.targetGroupJid
       const sock = this.sock;
 
       setTimeout(async () => {
         try {
           if (capturedItem.mediaPaths.length > 0 && fs.existsSync(capturedItem.mediaPaths[0])) {
-            await sock.sendMessage(targetJid, {
+            await sock.sendMessage(capturedJid, {
               image: { url: capturedItem.mediaPaths[0] },
               caption: capturedItem.generated?.draft || ''
             });
           } else {
-            await sock.sendMessage(targetJid, {
+            await sock.sendMessage(capturedJid, {
               text: capturedItem.generated?.draft || ''
             });
           }
-          logger.info(`Scheduled broadcast ${capturedIndex + 1} sent`);
+          logger.info(`Scheduled broadcast ${capturedIndex + 1} sent to ${isDevGroup ? 'DEV' : 'PROD'}`);
         } catch (error) {
           logger.error(`Failed to send scheduled broadcast ${capturedIndex + 1}:`, error);
         }
@@ -1134,8 +1156,9 @@ Kirim /done kalau sudah selesai.
       schedules.push(`${i + 1}. ${item.parsedData?.title || 'Untitled'} - ${timeStr}`);
     }
 
+    const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
     await this.sock.sendMessage(from, {
-      text: `📅 *${successItems.length} broadcast dijadwalkan*\nInterval: ${intervalMinutes} menit\n\n${schedules.join('\n')}\n\n⚠️ Jadwal hilang jika bot restart.`
+      text: `📅 *${successItems.length} broadcast dijadwalkan ke grup ${groupType}*\nInterval: ${intervalMinutes} menit\n\n${schedules.join('\n')}\n\n⚠️ Jadwal hilang jika bot restart.`
     });
 
     // Clear bulk state but don't cleanup media yet (they'll be sent later)
@@ -1350,11 +1373,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           }
 
@@ -1433,11 +1456,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           }
 
