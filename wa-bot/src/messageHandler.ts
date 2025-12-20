@@ -73,6 +73,10 @@ export class MessageHandler {
     title: string;
     scheduledTime: Date;
     targetGroup: 'PRODUCTION' | 'DEV';
+    draft: string;
+    mediaPaths: string[];
+    targetJid: string;
+    timeoutId: NodeJS.Timeout;
   }> = [];
 
   constructor(
@@ -228,6 +232,10 @@ export class MessageHandler {
           await this.sendQueueStatus(from);
           return true;
 
+        case '/flush':
+          await this.flushQueue(from);
+          return true;
+
         default:
           return false;
       }
@@ -258,6 +266,7 @@ export class MessageHandler {
 *Research Mode (Buat dari Nol):*
 /new <judul buku> - Cari buku di internet
 /queue - Lihat antrian broadcast terjadwal
+/flush - Kirim semua antrian SEKARANG (10-15 detik interval)
 
 *Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
@@ -340,6 +349,63 @@ export class MessageHandler {
     queueMsg += `⚠️ Jadwal hilang jika bot restart.`;
 
     await this.sock.sendMessage(from, { text: queueMsg });
+  }
+
+  private async flushQueue(from: string) {
+    if (this.scheduledQueue.length === 0) {
+      await this.sock.sendMessage(from, {
+        text: '📭 *Antrian Kosong*\n\nTidak ada broadcast untuk di-flush.'
+      });
+      return;
+    }
+
+    const itemsToSend = [...this.scheduledQueue];
+
+    // Cancel all scheduled timeouts
+    for (const item of itemsToSend) {
+      clearTimeout(item.timeoutId);
+    }
+
+    // Clear the queue
+    this.scheduledQueue = [];
+
+    await this.sock.sendMessage(from, {
+      text: `🚀 *FLUSH MODE*\n\nMengirim ${itemsToSend.length} broadcast sekarang dengan interval 10-15 detik...`
+    });
+
+    let sentCount = 0;
+    for (let i = 0; i < itemsToSend.length; i++) {
+      const item = itemsToSend[i];
+
+      try {
+        if (item.mediaPaths.length > 0 && fs.existsSync(item.mediaPaths[0])) {
+          await this.sock.sendMessage(item.targetJid, {
+            image: { url: item.mediaPaths[0] },
+            caption: item.draft
+          });
+        } else {
+          await this.sock.sendMessage(item.targetJid, {
+            text: item.draft
+          });
+        }
+
+        sentCount++;
+        const groupIcon = item.targetGroup === 'PRODUCTION' ? '🚀' : '🛠️';
+        logger.info(`Flush: sent "${item.title}" to ${item.targetGroup} ${groupIcon}`);
+
+        // Random delay 10-15 seconds (except last item)
+        if (i < itemsToSend.length - 1) {
+          const delay = 10000 + Math.random() * 5000;
+          await sleep(delay);
+        }
+      } catch (error: any) {
+        logger.error(`Flush failed for "${item.title}":`, error);
+      }
+    }
+
+    await this.sock.sendMessage(from, {
+      text: `✅ *FLUSH COMPLETE*\n\n${sentCount}/${itemsToSend.length} broadcast terkirim!`
+    });
   }
 
   private async setMarkup(from: string, args: string) {
@@ -1177,15 +1243,11 @@ Kirim /done kalau sudah selesai.
       const capturedJid = sendToJid;  // Use sendToJid, not this.targetGroupJid
       const sock = this.sock;
       const itemTitle = item.parsedData?.title || 'Untitled';
+      const itemDraft = capturedItem.generated?.draft || '';
+      const itemMediaPaths = capturedItem.mediaPaths || [];
 
-      // Add to scheduled queue
-      this.scheduledQueue.push({
-        title: itemTitle,
-        scheduledTime: scheduledTime,
-        targetGroup: isDevGroup ? 'DEV' : 'PRODUCTION'
-      });
-
-      setTimeout(async () => {
+      // Create timeout and store ID
+      const timeoutId = setTimeout(async () => {
         try {
           if (capturedItem.mediaPaths.length > 0 && fs.existsSync(capturedItem.mediaPaths[0])) {
             await sock.sendMessage(capturedJid, {
@@ -1207,6 +1269,17 @@ Kirim /done kalau sudah selesai.
           logger.error(`Failed to send scheduled broadcast ${capturedIndex + 1}:`, error);
         }
       }, delayMs);
+
+      // Add to scheduled queue with all data for flush
+      this.scheduledQueue.push({
+        title: itemTitle,
+        scheduledTime: scheduledTime,
+        targetGroup: isDevGroup ? 'DEV' : 'PRODUCTION',
+        draft: itemDraft,
+        mediaPaths: itemMediaPaths,
+        targetJid: capturedJid,
+        timeoutId: timeoutId
+      });
 
       const timeStr = scheduledTime.toLocaleTimeString('id-ID', {
         hour: '2-digit',
