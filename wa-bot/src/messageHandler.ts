@@ -68,6 +68,7 @@ export class MessageHandler {
   private bulkState: BulkState | null = null;
   private researchState: ResearchState | null = null;  // For /new command
   private targetGroupJid: string | null;
+  private devGroupJid: string | null;
 
   constructor(
     private sock: WASocket,
@@ -77,10 +78,14 @@ export class MessageHandler {
     private baileysPromise = loadBaileys()
   ) {
     this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
-    this.targetGroupJid = process.env.TARGET_GROUP_JID || null;
+    // Production group (default target)
+    this.targetGroupJid = process.env.TARGET_GROUP_JID || '120363420789401477@g.us';
+    // Dev/test group
+    this.devGroupJid = process.env.DEV_GROUP_JID || '120363335057034362@g.us';
 
     if (this.targetGroupJid) {
       logger.info(`Target group JID configured: ${this.targetGroupJid}`);
+      logger.info(`Dev group JID: ${this.devGroupJid}`);
     } else {
       logger.warn('TARGET_GROUP_JID not set - broadcast sending disabled');
     }
@@ -432,7 +437,13 @@ export class MessageHandler {
 
     // STATE 2: Draft pending - waiting for YES/CANCEL
     if (this.pendingState.state === 'draft_pending') {
-      // Check for YES response
+      // Check for YES DEV response (send to dev group)
+      if (text === 'yes dev' || text === 'y dev') {
+        await this.sendBroadcast(from, this.devGroupJid || undefined);
+        return true;
+      }
+
+      // Check for YES response (send to production group)
       if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
         await this.sendBroadcast(from);
         return true;
@@ -513,7 +524,7 @@ export class MessageHandler {
     }
   }
 
-  private async sendBroadcast(from: string) {
+  private async sendBroadcast(from: string, targetJid?: string) {
     if (!this.pendingState || !this.pendingState.draft) {
       await this.sock.sendMessage(from, {
         text: '❌ Tidak ada draft yang pending.'
@@ -521,7 +532,11 @@ export class MessageHandler {
       return;
     }
 
-    if (!this.targetGroupJid) {
+    // Use provided targetJid or default to production group
+    const sendToJid = targetJid || this.targetGroupJid;
+    const isDevGroup = targetJid === this.devGroupJid;
+
+    if (!sendToJid) {
       await this.sock.sendMessage(from, {
         text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
       });
@@ -538,28 +553,30 @@ export class MessageHandler {
         draftPreview: draft?.substring(0, 100) || 'EMPTY',
         mediaPathsCount: mediaPaths?.length || 0,
         mediaPaths: mediaPaths,
-        mediaExists: mediaPaths?.length > 0 ? fs.existsSync(mediaPaths[0]) : false
+        mediaExists: mediaPaths?.length > 0 ? fs.existsSync(mediaPaths[0]) : false,
+        targetGroup: isDevGroup ? 'DEV' : 'PRODUCTION'
       }, 'Sending broadcast to group');
 
       // Send to target group
       if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
         logger.info('Sending with image...');
-        await this.sock.sendMessage(this.targetGroupJid, {
+        await this.sock.sendMessage(sendToJid, {
           image: { url: mediaPaths[0] },
           caption: draft || ''
         });
       } else {
         logger.info('Sending text only...');
-        await this.sock.sendMessage(this.targetGroupJid, {
+        await this.sock.sendMessage(sendToJid, {
           text: draft || '(empty draft)'
         });
       }
 
-      logger.info(`Broadcast sent to group: ${this.targetGroupJid}`);
+      logger.info(`Broadcast sent to group: ${sendToJid}`);
 
-      // Confirm to owner
+      // Confirm to owner with group type
+      const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
       await this.sock.sendMessage(from, {
-        text: `✅ Broadcast berhasil dikirim ke grup!`
+        text: `✅ Broadcast berhasil dikirim ke grup ${groupType}!`
       });
 
     } catch (error: any) {
@@ -961,7 +978,13 @@ Kirim /done kalau sudah selesai.
 
     const normalizedText = text.toLowerCase().trim();
 
-    // YES - send immediately
+    // YES DEV - send to dev group
+    if (normalizedText === 'yes dev' || normalizedText === 'y dev') {
+      await this.sendBulkBroadcasts(from, this.devGroupJid || undefined);
+      return true;
+    }
+
+    // YES - send to production group
     if (normalizedText === 'yes' || normalizedText === 'y' || normalizedText === 'ya') {
       await this.sendBulkBroadcasts(from);
       return true;
@@ -993,9 +1016,13 @@ Kirim /done kalau sudah selesai.
     return false;
   }
 
-  private async sendBulkBroadcasts(from: string) {
-    if (!this.bulkState || !this.targetGroupJid) {
-      if (!this.targetGroupJid) {
+  private async sendBulkBroadcasts(from: string, targetJid?: string) {
+    // Use provided targetJid or default to production group
+    const sendToJid = targetJid || this.targetGroupJid;
+    const isDevGroup = targetJid === this.devGroupJid;
+
+    if (!this.bulkState || !sendToJid) {
+      if (!sendToJid) {
         await this.sock.sendMessage(from, {
           text: '❌ TARGET_GROUP_JID belum di-set.'
         });
@@ -1009,8 +1036,9 @@ Kirim /done kalau sudah selesai.
       item => item.generated && !item.generated.error
     );
 
+    const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
     await this.sock.sendMessage(from, {
-      text: `⏳ Mengirim ${successItems.length} broadcast ke grup...`
+      text: `⏳ Mengirim ${successItems.length} broadcast ke grup ${groupType}...`
     });
 
     let sentCount = 0;
@@ -1020,18 +1048,18 @@ Kirim /done kalau sudah selesai.
       try {
         // Send to group
         if (item.mediaPaths.length > 0 && fs.existsSync(item.mediaPaths[0])) {
-          await this.sock.sendMessage(this.targetGroupJid, {
+          await this.sock.sendMessage(sendToJid, {
             image: { url: item.mediaPaths[0] },
             caption: item.generated?.draft || ''
           });
         } else {
-          await this.sock.sendMessage(this.targetGroupJid, {
+          await this.sock.sendMessage(sendToJid, {
             text: item.generated?.draft || ''
           });
         }
 
         sentCount++;
-        logger.info(`Bulk broadcast ${i + 1}/${successItems.length} sent`);
+        logger.info(`Bulk broadcast ${i + 1}/${successItems.length} sent to ${isDevGroup ? 'DEV' : 'PROD'}`);
 
         // Random delay 15-30 seconds (except last item)
         if (i < successItems.length - 1) {
@@ -1045,7 +1073,7 @@ Kirim /done kalau sudah selesai.
     }
 
     await this.sock.sendMessage(from, {
-      text: `✅ ${sentCount}/${successItems.length} broadcast terkirim ke grup!`
+      text: `✅ ${sentCount}/${successItems.length} broadcast terkirim ke grup ${groupType}!`
     });
 
     this.clearBulkState();
@@ -1358,7 +1386,13 @@ Kirim /done kalau sudah selesai.
 
     // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL
     if (this.researchState.state === 'draft_pending' && this.researchState.draft) {
-      // YES - send to group
+      // YES DEV - send to dev group
+      if (text === 'yes dev' || text === 'y dev') {
+        await this.sendResearchBroadcast(from, this.devGroupJid || undefined);
+        return true;
+      }
+
+      // YES - send to production group
       if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
         await this.sendResearchBroadcast(from);
         return true;
@@ -1481,7 +1515,7 @@ Kirim /done kalau sudah selesai.
     return { price, format: format || 'HB', eta, closeDate, minOrder };
   }
 
-  private async sendResearchBroadcast(from: string) {
+  private async sendResearchBroadcast(from: string, targetJid?: string) {
     if (!this.researchState || !this.researchState.draft) {
       await this.sock.sendMessage(from, {
         text: '❌ Tidak ada draft yang pending.'
@@ -1489,7 +1523,11 @@ Kirim /done kalau sudah selesai.
       return;
     }
 
-    if (!this.targetGroupJid) {
+    // Use provided targetJid or default to production group
+    const sendToJid = targetJid || this.targetGroupJid;
+    const isDevGroup = targetJid === this.devGroupJid;
+
+    if (!sendToJid) {
       await this.sock.sendMessage(from, {
         text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
       });
@@ -1502,20 +1540,21 @@ Kirim /done kalau sudah selesai.
 
       // Send to target group
       if (imagePath && fs.existsSync(imagePath)) {
-        await this.sock.sendMessage(this.targetGroupJid, {
+        await this.sock.sendMessage(sendToJid, {
           image: { url: imagePath },
           caption: draft || ''
         });
       } else {
-        await this.sock.sendMessage(this.targetGroupJid, {
+        await this.sock.sendMessage(sendToJid, {
           text: draft || '(empty draft)'
         });
       }
 
-      logger.info(`Research broadcast sent to group: ${this.targetGroupJid}`);
+      logger.info(`Research broadcast sent to group: ${sendToJid} (${isDevGroup ? 'DEV' : 'PROD'})`);
 
+      const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
       await this.sock.sendMessage(from, {
-        text: `✅ Broadcast berhasil dikirim ke grup!`
+        text: `✅ Broadcast berhasil dikirim ke grup ${groupType}!`
       });
 
     } catch (error: any) {
