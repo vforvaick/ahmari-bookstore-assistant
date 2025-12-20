@@ -38,6 +38,13 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 
 ## Recently Completed
 
+- **Target Group & Queue Management** (2025-12-20)
+  - ✅ DEV vs PRODUCTION target groups (`YES` vs `YES DEV`)
+  - ✅ `/queue` command to view pending schedules
+  - ✅ `/flush` command to force send all queued items
+  - ✅ Timezone fix (WIB)
+  - ✅ Preview Link Search (`LINKS` option)
+
 - **Web Research Mode** (2025-12-19)
   - ✅ `/new <book title>` command for creating promos from scratch
   - ✅ Google Custom Search API integration

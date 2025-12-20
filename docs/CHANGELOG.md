@@ -9,6 +9,23 @@ All notable changes to this project will be documented in this file.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
 
+## [1.7.0] - 2025-12-20
+
+### Added
+- **Target Group Control:**
+  - `YES DEV` / `SCHEDULE DEV <min>`: Send to development group (`120363335057034362@g.us`).
+  - `YES` / `SCHEDULE <min>`: Send to production group (`120363420789401477@g.us`).
+- **Queue Management:**
+  - `/queue`: View list of scheduled broadcasts with countdown timer.
+  - `/flush`: Cancel all scheduled timers and send queued broadcasts immediately (10-15s random interval).
+- **Preview Link Search:** `LINKS` option in drafts to search and add valid preview links (Google Books, YouTube, etc.).
+
+### Fixed
+- **Timezone Issue:** Added `TZ=Asia/Jakarta` to `docker-compose.yml` so bot shows correct WIB time.
+- **Schedule Routing:** Fixed bug where `SCHEDULE` command was defaulting to old group ID; updated VPS `.env` to correct production group ID.
+- **AI Rate Limits:** Added support for multiple Gemini API keys with automatic rotation on 429 errors.
+
+
 ## [1.6.0] - 2025-12-19
 
 ### Added
