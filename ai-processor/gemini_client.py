@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 class AIReviewResponse(BaseModel):
     """Response from Gemini containing review and optional publisher guess."""
     publisher_guess: Optional[str] = None
+class AIReviewResponse(BaseModel):
+    """Response from Gemini containing review and optional publisher guess."""
+    publisher_guess: Optional[str] = None
+    cleaned_title: Optional[str] = None
     review: str
 
 
@@ -167,8 +171,12 @@ class GeminiClient:
 - Selling: AGGRESSIVE (make them feel they'll regret NOT buying)
 - Target: FOMO + instant buy decision"""
 
-        prompt = f"""Tulis 1 paragraf LENGKAP review buku \"{parsed.title}\" dalam Bahasa Indonesia.
-PANJANG TARGET: Minimal 3-5 kalimat LENGKAP (jangan terpotong di tengah).
+        prompt = f"""Tulis review buku \"{parsed.title}\" dalam Bahasa Indonesia.
+OUTPUT FORMAT WAJIB (Ikuti persis):
+TITLE: [Judul Buku Bersih tanpa embel-embel toko/edisi]
+PUBLISHER: [Nama Publisher jika ada, atau skip baris ini]
+[Paragraf Review LENGKAP minimal 3-5 kalimat]
+
 {user_edit_instruction}
 DESKRIPSI BUKU: {description_text}
 
@@ -176,8 +184,11 @@ DESKRIPSI BUKU: {description_text}
 
 {publisher_instruction}
 
-IMPORTANT: Pastikan paragraf selesai sempurna dengan kalimat penutup yang kuat. JANGAN berhenti di tengah kalimat!
-TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON atau penjelasan lain."""
+IMPORTANT:
+1. Baris pertama WAJIB "TITLE: ..." (Bersihkan judul dari "Amazon", "Goodreads", "Hardcover", dll)
+2. Baris kedua "PUBLISHER: ..." (Optional)
+3. Review paragraph harus selesai sempurna (jangan terpotong).
+JANGAN pakai format JSON."""
         
         return prompt
 
@@ -247,24 +258,35 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON atau penjelasan lain."""
                 result_text = response.text.strip()
                 logger.info(f"Success with API key ...{key_suffix}, response length: {len(result_text)}")
                 
-                # Parse response - now expecting plain text, not JSON
+                # Parse response - now looks for TITLE:, PUBLISHER:, and review body
                 publisher_guess = None
+                cleaned_title = None
                 review = result_text
                 
-                # Check if response starts with PUBLISHER: prefix
+                # Extract TITLE
                 import re
-                publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
+                title_match = re.search(r'^TITLE:\s*(.+?)$', result_text, re.MULTILINE)
+                if title_match:
+                    cleaned_title = title_match.group(1).strip()
+                    # Remove the title line from review text
+                    review = review.replace(title_match.group(0), '', 1).strip()
+                
+                # Extract PUBLISHER
+                publisher_match = re.search(r'^PUBLISHER:\s*(.+?)$', result_text, re.MULTILINE)
                 if publisher_match:
                     publisher_guess = publisher_match.group(1).strip()
-                    review = result_text[publisher_match.end():].strip()
+                    # Remove publisher line from review text
+                    review = review.replace(publisher_match.group(0), '', 1).strip()
                 
-                # Clean up any accidental JSON formatting
+                # Clean up any accidental JSON formatting (fallback)
                 if review.startswith('{') and '"review"' in review:
                     try:
                         result_json = json.loads(review)
                         review = result_json.get('review', review)
                         if not publisher_guess:
                             publisher_guess = result_json.get('publisher_guess')
+                        if not cleaned_title:
+                            cleaned_title = result_json.get('title')
                     except:
                         pass
                 
@@ -272,10 +294,11 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON atau penjelasan lain."""
                 if review.startswith('"') and review.endswith('"'):
                     review = review[1:-1]
                 
-                logger.info(f"Parsed review length: {len(review)}, publisher: {publisher_guess}")
+                logger.info(f"Parsed review length: {len(review)}, title: {cleaned_title}, publisher: {publisher_guess}")
                 
                 return AIReviewResponse(
                     publisher_guess=publisher_guess,
+                    cleaned_title=cleaned_title,
                     review=review
                 )
                 

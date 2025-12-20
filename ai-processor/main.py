@@ -254,6 +254,11 @@ async def generate_from_research(request: ResearchGenerateRequest):
         # Step 3: Determine publisher (provided > AI guess)
         publisher = request.book.publisher or ai_response.publisher_guess
         
+        # Update title if clean version provided by AI
+        if ai_response.cleaned_title:
+            logger.info(f"Using cleaned title from AI: '{ai_response.cleaned_title}'")
+            parsed_for_ai.title = ai_response.cleaned_title
+        
         # Step 4: Format final broadcast
         draft = formatter.format_broadcast(
             parsed_for_ai,
