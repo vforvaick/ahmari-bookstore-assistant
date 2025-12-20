@@ -171,12 +171,8 @@ class GeminiClient:
 - Selling: AGGRESSIVE (make them feel they'll regret NOT buying)
 - Target: FOMO + instant buy decision"""
 
-        prompt = f"""Tulis review buku \"{parsed.title}\" dalam Bahasa Indonesia.
-OUTPUT FORMAT WAJIB (Ikuti persis):
-TITLE: [Judul Buku Bersih tanpa embel-embel toko/edisi]
-PUBLISHER: [Nama Publisher jika ada, atau skip baris ini]
-[Paragraf Review LENGKAP minimal 3-5 kalimat]
-
+        prompt = f"""Tulis 1 paragraf LENGKAP review buku \"{parsed.title}\" dalam Bahasa Indonesia.
+PANJANG TARGET: Minimal 3-5 kalimat LENGKAP (jangan terpotong di tengah).
 {user_edit_instruction}
 DESKRIPSI BUKU: {description_text}
 
@@ -184,11 +180,8 @@ DESKRIPSI BUKU: {description_text}
 
 {publisher_instruction}
 
-IMPORTANT:
-1. Baris pertama WAJIB "TITLE: ..." (Bersihkan judul dari "Amazon", "Goodreads", "Hardcover", dll)
-2. Baris kedua "PUBLISHER: ..." (Optional)
-3. Review paragraph harus selesai sempurna (jangan terpotong).
-JANGAN pakai format JSON."""
+IMPORTANT: Pastikan paragraf selesai sempurna dengan kalimat penutup yang kuat. JANGAN berhenti di tengah kalimat!
+TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lain."""
         
         return prompt
 
@@ -258,35 +251,31 @@ JANGAN pakai format JSON."""
                 result_text = response.text.strip()
                 logger.info(f"Success with API key ...{key_suffix}, response length: {len(result_text)}")
                 
-                # Parse response - now looks for TITLE:, PUBLISHER:, and review body
+                # Parse response - expecting plain text review, optionally with PUBLISHER: prefix
                 publisher_guess = None
                 cleaned_title = None
                 review = result_text
                 
-                # Extract TITLE
+                # Check if response starts with PUBLISHER: prefix (legacy/optional)
                 import re
-                title_match = re.search(r'^TITLE:\s*(.+?)$', result_text, re.MULTILINE)
-                if title_match:
-                    cleaned_title = title_match.group(1).strip()
-                    # Remove the title line from review text
-                    review = review.replace(title_match.group(0), '', 1).strip()
-                
-                # Extract PUBLISHER
-                publisher_match = re.search(r'^PUBLISHER:\s*(.+?)$', result_text, re.MULTILINE)
+                publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
                 if publisher_match:
                     publisher_guess = publisher_match.group(1).strip()
-                    # Remove publisher line from review text
-                    review = review.replace(publisher_match.group(0), '', 1).strip()
+                    review = result_text[publisher_match.end():].strip()
                 
-                # Clean up any accidental JSON formatting (fallback)
+                # Check if response starts with TITLE: prefix (legacy/optional)
+                title_match = re.match(r'^TITLE:\s*(.+?)\n', review)
+                if title_match:
+                    cleaned_title = title_match.group(1).strip()
+                    review = review[title_match.end():].strip()
+                
+                # Clean up any accidental JSON formatting
                 if review.startswith('{') and '"review"' in review:
                     try:
                         result_json = json.loads(review)
                         review = result_json.get('review', review)
                         if not publisher_guess:
                             publisher_guess = result_json.get('publisher_guess')
-                        if not cleaned_title:
-                            cleaned_title = result_json.get('title')
                     except:
                         pass
                 
