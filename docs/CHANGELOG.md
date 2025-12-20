@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
   - Auto-downloads book cover image from web (with option to use own image)
   - Generates promo using same AI + template as FGB conversions
   - Supports all 3 recommendation levels
+- **Web Research Feature (v1.6.0):** Create promos from web search (`/new <title>`). Supports Google Custom Search, image auto-download, and AI-powered review generation.
+- **Search Logic Improvements:** Added noise filtering (Reddit/Pinterest/YouTube exclusion) and "children's book" context to search queries.
+- **AI Title Cleaning:** Added logic to extract and use clean book titles from AI analysis, fixing raw search result titles in drafts.
+- **Connection Stability:** Added `keepAlive` ping to WhatsApp connection to prevent zombie state.
 
 - **New AI Processor Endpoints**:
   - `POST /research` - Search for books by title/query
