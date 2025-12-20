@@ -69,6 +69,11 @@ export class MessageHandler {
   private researchState: ResearchState | null = null;  // For /new command
   private targetGroupJid: string | null;
   private devGroupJid: string | null;
+  private scheduledQueue: Array<{
+    title: string;
+    scheduledTime: Date;
+    targetGroup: 'PRODUCTION' | 'DEV';
+  }> = [];
 
   constructor(
     private sock: WASocket,
@@ -219,6 +224,10 @@ export class MessageHandler {
           await this.startBookResearch(from, args);
           return true;
 
+        case '/queue':
+          await this.sendQueueStatus(from);
+          return true;
+
         default:
           return false;
       }
@@ -248,6 +257,7 @@ export class MessageHandler {
 
 *Research Mode (Buat dari Nol):*
 /new <judul buku> - Cari buku di internet
+/queue - Lihat antrian broadcast terjadwal
 
 *Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
@@ -294,6 +304,42 @@ export class MessageHandler {
 ⏰ Uptime: Running
 🔑 Owner JIDs: ${this.ownerJids.length} configured`
     });
+  }
+
+  private async sendQueueStatus(from: string) {
+    // Clean up expired items
+    const now = new Date();
+    this.scheduledQueue = this.scheduledQueue.filter(item => item.scheduledTime > now);
+
+    if (this.scheduledQueue.length === 0) {
+      await this.sock.sendMessage(from, {
+        text: '📭 *Antrian Kosong*\n\nTidak ada broadcast terjadwal.'
+      });
+      return;
+    }
+
+    // Sort by scheduled time
+    const sorted = this.scheduledQueue.sort((a, b) => a.scheduledTime.getTime() - b.scheduledTime.getTime());
+
+    let queueMsg = `📋 *Antrian Broadcast* (${sorted.length} items)\n\n`;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const item = sorted[i];
+      const minutesLeft = Math.round((item.scheduledTime.getTime() - now.getTime()) / 60000);
+      const timeStr = item.scheduledTime.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Jakarta'
+      });
+      const groupIcon = item.targetGroup === 'PRODUCTION' ? '🚀' : '🛠️';
+
+      queueMsg += `${i + 1}. ${item.title}\n`;
+      queueMsg += `   ⏰ ${timeStr} (${minutesLeft} menit lagi) ${groupIcon}\n\n`;
+    }
+
+    queueMsg += `⚠️ Jadwal hilang jika bot restart.`;
+
+    await this.sock.sendMessage(from, { text: queueMsg });
   }
 
   private async setMarkup(from: string, args: string) {
@@ -1130,6 +1176,14 @@ Kirim /done kalau sudah selesai.
       const capturedIndex = i;
       const capturedJid = sendToJid;  // Use sendToJid, not this.targetGroupJid
       const sock = this.sock;
+      const itemTitle = item.parsedData?.title || 'Untitled';
+
+      // Add to scheduled queue
+      this.scheduledQueue.push({
+        title: itemTitle,
+        scheduledTime: scheduledTime,
+        targetGroup: isDevGroup ? 'DEV' : 'PRODUCTION'
+      });
 
       setTimeout(async () => {
         try {
@@ -1144,6 +1198,11 @@ Kirim /done kalau sudah selesai.
             });
           }
           logger.info(`Scheduled broadcast ${capturedIndex + 1} sent to ${isDevGroup ? 'DEV' : 'PROD'}`);
+
+          // Remove from queue after sending
+          this.scheduledQueue = this.scheduledQueue.filter(q =>
+            !(q.title === itemTitle && q.scheduledTime.getTime() === scheduledTime.getTime())
+          );
         } catch (error) {
           logger.error(`Failed to send scheduled broadcast ${capturedIndex + 1}:`, error);
         }
