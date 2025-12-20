@@ -264,9 +264,79 @@ class BookResearcher:
         except Exception as e:
             logger.error(f"Failed to download image: {e}")
             return None
-
-
-# Simple test
+    
+    async def search_preview_links(
+        self,
+        book_title: str,
+        max_links: int = 3
+    ) -> List[str]:
+        """
+        Search for valid preview links for a book.
+        
+        Args:
+            book_title: Book title to search for
+            max_links: Maximum number of valid links to return
+            
+        Returns:
+            List of validated URLs (only those returning 200 status)
+        """
+        if not self.api_key or not self.search_engine_id:
+            raise ValueError("Google Search API not configured.")
+        
+        # Search query optimized for preview/read links
+        search_query = f"{book_title} preview read online book"
+        
+        params = {
+            'key': self.api_key,
+            'cx': self.search_engine_id,
+            'q': search_query,
+            'num': 10,  # Get more results to filter valid ones
+        }
+        
+        logger.info(f"Searching preview links for: '{book_title}'")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(self.base_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Google Search API error: {e}")
+            raise RuntimeError(f"Link search failed: {e}")
+        
+        items = data.get('items', [])
+        logger.info(f"Found {len(items)} search results, validating links...")
+        
+        valid_links = []
+        
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            for item in items:
+                if len(valid_links) >= max_links:
+                    break
+                
+                link = item.get('link', '')
+                if not link:
+                    continue
+                
+                # Skip certain domains that are not useful for preview
+                skip_domains = ['pinterest.', 'facebook.', 'twitter.', 'instagram.', 'youtube.', 'reddit.']
+                if any(d in link.lower() for d in skip_domains):
+                    continue
+                
+                # Validate link with HEAD request
+                try:
+                    head_response = await client.head(link)
+                    if head_response.status_code == 200:
+                        valid_links.append(link)
+                        logger.info(f"Valid link: {link[:60]}...")
+                    else:
+                        logger.debug(f"Invalid link (status {head_response.status_code}): {link[:60]}...")
+                except Exception as e:
+                    logger.debug(f"Link validation failed: {link[:60]}... - {e}")
+                    continue
+        
+        logger.info(f"Returning {len(valid_links)} valid preview links")
+        return valid_links# Simple test
 if __name__ == "__main__":
     import asyncio
     

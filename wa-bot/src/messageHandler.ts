@@ -1322,11 +1322,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           }
 
@@ -1371,6 +1371,50 @@ Kirim /done kalau sudah selesai.
         });
         this.clearResearchState();
         return true;
+      }
+
+      // LINKS - search for additional preview links
+      if (text.includes('link')) {
+        await this.sock.sendMessage(from, { text: '🔍 Mencari link preview tambahan...' });
+
+        try {
+          const bookTitle = this.researchState.selectedBook?.title || '';
+          const newLinks = await this.aiClient.searchPreviewLinks(bookTitle, 2);
+
+          if (newLinks.length === 0) {
+            await this.sock.sendMessage(from, { text: '❌ Tidak menemukan link preview valid.' });
+            return true;
+          }
+
+          // Update draft with new links
+          const linksSection = newLinks.map(l => `- ${l}`).join('\n');
+          const updatedDraft = this.researchState.draft!.replace(
+            /Preview:\n[\s\S]*$/,
+            `Preview:\n${linksSection}`
+          );
+          this.researchState.draft = updatedDraft;
+
+          // Re-display updated draft
+          const imagePath = this.researchState.imagePath;
+          if (imagePath && fs.existsSync(imagePath)) {
+            await this.sock.sendMessage(from, {
+              image: { url: imagePath },
+              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+            });
+          } else {
+            await this.sock.sendMessage(from, {
+              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+            });
+          }
+
+          logger.info(`Updated draft with ${newLinks.length} new preview links`);
+          return true;
+
+        } catch (error: any) {
+          logger.error('Link search error:', error);
+          await this.sock.sendMessage(from, { text: `❌ Gagal cari link: ${error.message}` });
+          return true;
+        }
       }
 
       // CANCEL

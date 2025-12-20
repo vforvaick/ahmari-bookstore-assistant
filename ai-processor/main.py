@@ -304,3 +304,41 @@ async def download_research_image(image_url: str):
     except Exception as e:
         logger.error(f"Image download error: {e}")
         raise HTTPException(status_code=500, detail=f"Image download failed: {e}")
+
+
+@app.post("/research/search-links")
+async def search_preview_links(book_title: str, max_links: int = 2):
+    """
+    Search for valid preview links for a given book.
+    
+    Uses Google Custom Search to find links, then validates each with HTTP HEAD.
+    Only returns links that respond with status 200.
+    
+    Args:
+        book_title: Book title to search preview links for
+        max_links: Maximum number of valid links to return (default: 2)
+    
+    Returns:
+        List of valid URLs
+    """
+    try:
+        logger.info(f"Searching preview links for: '{book_title}'")
+        
+        links = await book_researcher.search_preview_links(
+            book_title=book_title,
+            max_links=max_links
+        )
+        
+        return {
+            "status": "success",
+            "book_title": book_title,
+            "links": links,
+            "count": len(links)
+        }
+        
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Link search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Link search failed: {e}")

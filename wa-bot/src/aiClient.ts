@@ -188,4 +188,20 @@ export class AIClient {
       return null;
     }
   }
+
+  async searchPreviewLinks(bookTitle: string, maxLinks: number = 2): Promise<string[]> {
+    try {
+      logger.info(`Searching preview links for: "${bookTitle}"`);
+      const response = await this.client.post<{ status: string; links: string[]; count: number }>(
+        '/research/search-links',
+        null,
+        { params: { book_title: bookTitle, max_links: maxLinks } }
+      );
+      logger.info(`Found ${response.data.count} valid preview links`);
+      return response.data.links;
+    } catch (error: any) {
+      logger.error('Preview link search failed:', error.message);
+      throw new Error(`Preview link search failed: ${error.message}`);
+    }
+  }
 }
