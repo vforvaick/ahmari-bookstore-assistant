@@ -33,6 +33,10 @@ export class WhatsAppClient {
       logger: pino({ level: process.env.LOG_LEVEL || 'warn' }),
       browser: baileys.Browsers.macOS('Desktop'),
       version,
+      // Keep connection alive - ping every 25 seconds
+      keepAliveIntervalMs: 25000,
+      // Retry delay for failed requests
+      retryRequestDelayMs: 2000,
       getMessage: async (key) => {
         // Retrieve message from store if needed
         return { conversation: '' };
