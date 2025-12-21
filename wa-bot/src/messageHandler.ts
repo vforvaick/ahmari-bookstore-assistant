@@ -1399,7 +1399,7 @@ Kirim /done kalau sudah selesai.
       });
 
       // Call AI Processor to search books
-      const searchResponse = await this.aiClient.searchBooks(query, 5);
+      const searchResponse = await this.aiClient.searchBooks(query, 8); // Get more to allow deduplication
 
       if (searchResponse.count === 0) {
         await this.sock.sendMessage(from, {
@@ -1408,36 +1408,40 @@ Kirim /done kalau sudah selesai.
         return;
       }
 
-      // Store research state
+      // Deduplicate by cleaned title (keep first occurrence with best data)
+      const seenTitles = new Set<string>();
+      const deduped = searchResponse.results.filter(book => {
+        // Normalize title for deduplication
+        const normalizedTitle = book.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (seenTitles.has(normalizedTitle)) {
+          return false;
+        }
+        seenTitles.add(normalizedTitle);
+        return true;
+      }).slice(0, 5); // Keep max 5 unique results
+
+      // Store research state with deduplicated results
       this.researchState = {
         state: 'selection_pending',
         query,
-        results: searchResponse.results,
+        results: deduped,
         level: 2,  // Default to level 2
         timestamp: Date.now()
       };
 
-      // Build results message
-      let resultsMsg = `📚 *Ditemukan ${searchResponse.count} buku:*\n\n`;
-      searchResponse.results.forEach((book, i) => {
-        const author = book.author ? ` - ${book.author}` : '';
-        const publisher = book.publisher ? ` (${book.publisher})` : '';
-        resultsMsg += `${i + 1}. *${book.title}*${author}${publisher}\n`;
-        if (book.snippet) {
-          // Truncate snippet
-          const shortSnippet = book.snippet.length > 100
-            ? book.snippet.substring(0, 100) + '...'
-            : book.snippet;
-          resultsMsg += `   _${shortSnippet}_\n`;
-        }
-        resultsMsg += '\n';
+      // Build cleaner results message: Title | Publisher 📷
+      let resultsMsg = `📚 *Ditemukan ${deduped.length} buku:*\n\n`;
+      deduped.forEach((book, i) => {
+        const hasImage = book.image_url ? ' 📷' : '';
+        const publisher = book.publisher ? ` | Publisher: ${book.publisher}` : '';
+        resultsMsg += `${i + 1}. *${book.title}*${publisher}${hasImage}\n`;
       });
 
-      resultsMsg += `---\nBalas dengan *angka* (1-${searchResponse.count}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`;
+      resultsMsg += `\n---\nBalas dengan *angka* (1-${deduped.length}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`;
 
       await this.sock.sendMessage(from, { text: resultsMsg });
 
-      logger.info(`Book search results shown: ${searchResponse.count} books`);
+      logger.info(`Book search results shown: ${deduped.length} books (deduplicated from ${searchResponse.count})`);
 
     } catch (error: any) {
       logger.error('Book search error:', error);
@@ -1497,30 +1501,24 @@ Kirim /done kalau sudah selesai.
           this.researchState.enrichedDescription = selectedBook.description || selectedBook.snippet;
         }
 
-        // Step 3: Search for cover images
-        try {
-          const images = await this.aiClient.searchImages(selectedBook.title, 5);
-          if (images.length > 0) {
-            this.researchState.imageOptions = images;
-            this.researchState.state = 'image_selection_pending';
-
-            let imgMsg = `✅ *${this.researchState.displayTitle}*\n\n📷 *Pilih cover image:*\n\n`;
-            images.forEach((img, i) => {
-              imgMsg += `${i + 1}. ${img.source || 'image'} (${img.width}x${img.height})\n`;
-            });
-            imgMsg += `\n0. Tidak pakai gambar\n\n---\nBalas dengan angka (0-${images.length})\nAtau *kirim gambar* untuk pakai cover sendiri`;
-
-            await this.sock.sendMessage(from, { text: imgMsg });
-            return true;
+        // Step 3: Auto-download first available image (simplified flow)
+        if (selectedBook.image_url) {
+          try {
+            const imagePath = await this.aiClient.downloadResearchImage(selectedBook.image_url);
+            if (imagePath) {
+              this.researchState.imagePath = imagePath;
+              logger.info(`Auto-downloaded cover image: ${imagePath}`);
+            }
+          } catch (e) {
+            logger.warn('Failed to download book image:', e);
           }
-        } catch (e) {
-          logger.warn('Image search failed:', e);
         }
 
-        // No images found, skip to details
+        // Go directly to details (image change available at draft stage with COVER option)
         this.researchState.state = 'details_pending';
+        const coverStatus = this.researchState.imagePath ? '📷 Cover tersimpan' : '⚠️ Tidak ada cover';
         await this.sock.sendMessage(from, {
-          text: `✅ *${this.researchState.displayTitle}*\n\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
+          text: `✅ *${this.researchState.displayTitle}*\n${coverStatus}\n\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
         });
         return true;
       }
@@ -1535,52 +1533,6 @@ Kirim /done kalau sudah selesai.
       // Invalid selection
       await this.sock.sendMessage(from, {
         text: `⚠️ Pilih angka 1-${this.researchState.results?.length}.\nAtau kirim /cancel untuk batal.`
-      });
-      return true;
-    }
-
-    // STATE 1.5: Waiting for image selection (number or sent image)
-    if (this.researchState.state === 'image_selection_pending') {
-      const num = parseInt(text.trim());
-
-      // User selected an image by number
-      if (!isNaN(num) && num >= 0 && num <= (this.researchState.imageOptions?.length || 0)) {
-        if (num === 0) {
-          // No image
-          this.researchState.imagePath = undefined;
-        } else {
-          // Download selected image
-          const selectedImage = this.researchState.imageOptions![num - 1];
-          try {
-            await this.sock.sendMessage(from, { text: '⬇️ Downloading cover...' });
-            const imagePath = await this.aiClient.downloadResearchImage(selectedImage.url);
-            if (imagePath) {
-              this.researchState.imagePath = imagePath;
-            }
-          } catch (e) {
-            logger.warn('Failed to download selected image:', e);
-          }
-        }
-
-        // Proceed to details
-        this.researchState.state = 'details_pending';
-        this.researchState.timestamp = Date.now();
-        await this.sock.sendMessage(from, {
-          text: `${this.researchState.imagePath ? '✅ Cover tersimpan!\n\n' : ''}📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
-        });
-        return true;
-      }
-
-      // Check for cancel
-      if (text.includes('cancel') || text.includes('batal')) {
-        await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
-        this.clearResearchState();
-        return true;
-      }
-
-      // Invalid selection
-      await this.sock.sendMessage(from, {
-        text: `⚠️ Pilih angka 0-${this.researchState.imageOptions?.length}.\nAtau kirim gambar untuk cover sendiri.`
       });
       return true;
     }
@@ -1655,11 +1607,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - ganti cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - pilih cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           }
 
@@ -1689,6 +1641,60 @@ Kirim /done kalau sudah selesai.
       return true;
     }
 
+    // STATE 3.5: Image selection (from COVER option at draft stage)
+    if (this.researchState.state === 'image_selection_pending' && this.researchState.draft) {
+      const num = parseInt(text.trim());
+
+      if (!isNaN(num) && num >= 0 && num <= (this.researchState.imageOptions?.length || 0)) {
+        if (num === 0) {
+          // Cancel cover change
+          await this.sock.sendMessage(from, { text: '↩️ Cover tidak diganti.' });
+        } else {
+          // Download selected image
+          const selectedImage = this.researchState.imageOptions![num - 1];
+          try {
+            await this.sock.sendMessage(from, { text: '⬇️ Downloading cover...' });
+            const imagePath = await this.aiClient.downloadResearchImage(selectedImage.url);
+            if (imagePath) {
+              this.researchState.imagePath = imagePath;
+              await this.sock.sendMessage(from, { text: '✅ Cover berhasil diganti!' });
+            }
+          } catch (e) {
+            logger.warn('Failed to download selected image:', e);
+            await this.sock.sendMessage(from, { text: '❌ Gagal download cover.' });
+          }
+        }
+
+        // Return to draft_pending and re-display draft
+        this.researchState.state = 'draft_pending';
+        const imagePath = this.researchState.imagePath;
+        if (imagePath && fs.existsSync(imagePath)) {
+          await this.sock.sendMessage(from, {
+            image: { url: imagePath },
+            caption: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - ganti cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+          });
+        } else {
+          await this.sock.sendMessage(from, {
+            text: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - pilih cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+          });
+        }
+        return true;
+      }
+
+      // Check for cancel
+      if (text.includes('cancel') || text.includes('batal')) {
+        this.researchState.state = 'draft_pending';
+        await this.sock.sendMessage(from, { text: '↩️ Cover tidak diganti.' });
+        return true;
+      }
+
+      // Invalid selection
+      await this.sock.sendMessage(from, {
+        text: `⚠️ Pilih angka 0-${this.researchState.imageOptions?.length}.`
+      });
+      return true;
+    }
+
     // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL
     if (this.researchState.state === 'draft_pending' && this.researchState.draft) {
       // YES DEV - send to dev group
@@ -1710,6 +1716,41 @@ Kirim /done kalau sudah selesai.
         });
         this.clearResearchState();
         return true;
+      }
+
+      // COVER - search for new cover images
+      if (text.includes('cover')) {
+        await this.sock.sendMessage(from, { text: '🔍 Mencari cover image...' });
+
+        try {
+          const bookTitle = this.researchState.selectedBook?.title || '';
+          const images = await this.aiClient.searchImages(bookTitle, 5);
+
+          if (images.length === 0) {
+            await this.sock.sendMessage(from, { text: '❌ Tidak menemukan cover image.' });
+            return true;
+          }
+
+          // Store image options and enter image selection mode
+          this.researchState.imageOptions = images;
+
+          let imgMsg = `📷 *Pilih cover image:*\n\n`;
+          images.forEach((img, i) => {
+            imgMsg += `${i + 1}. ${img.source || 'image'} (${img.width}x${img.height})\n`;
+          });
+          imgMsg += `\n0. Batalkan ganti cover\n\n---\nBalas dengan angka (0-${images.length})`;
+
+          await this.sock.sendMessage(from, { text: imgMsg });
+
+          // Set a flag to indicate we're waiting for image selection
+          this.researchState.state = 'image_selection_pending';
+          return true;
+
+        } catch (error: any) {
+          logger.error('Cover search error:', error);
+          await this.sock.sendMessage(from, { text: `❌ Gagal cari cover: ${error.message}` });
+          return true;
+        }
       }
 
       // LINKS - search for additional preview links
