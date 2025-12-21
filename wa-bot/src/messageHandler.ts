@@ -1804,8 +1804,12 @@ Kirim /done kalau sudah selesai.
 
       // 6. EDIT
       if (mappedText === 'edit' || mappedText.includes('ubah')) {
+        // Send clean draft for easy copy-paste editing
+        if (this.researchState.draft) {
+          await this.sock.sendMessage(from, { text: this.researchState.draft });
+        }
         await this.sock.sendMessage(from, {
-          text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
+          text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu kirim ulang ke saya!'
         });
         this.clearResearchState();
         return true;
