@@ -8,6 +8,18 @@ All notable changes to this project will be documented in this file.
 - Persistence for conversation state.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
+## [1.8.1] - 2025-12-21
+
+### Added
+- **Simplified Research Flow:**
+  - **Deduplicated Results:** Search results now filtered by cleaned title to remove duplicates.
+  - **Cleaner Format:** Results show `*Title* | Publisher 📷` with camera icon if cover available.
+  - **Cover Management:** Added `COVER` option in draft stage to search/change cover image.
+
+### Changed
+- **Auto-Cover Flow:** Removed manual image selection step after book selection. System now auto-downloads the first available cover image and proceeds directly to details.
+- **Improved UX:** Reduced friction in `/new` command by removing intermediate image selection state.
+
 
 ## [1.8.0] - 2025-12-21
 

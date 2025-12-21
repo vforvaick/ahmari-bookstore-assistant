@@ -38,6 +38,11 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 
 ## Recently Completed
 
+- **Simplified Research Flow v1.8.1** (2025-12-21)
+  - ✅ Deduplicated result display
+  - ✅ Auto-download cover
+  - ✅ COVER option in draft
+
 - **Enhanced Research Mode v1.8.0** (2025-12-21)
   - ✅ Clean display titles (Publisher extraction)
   - ✅ Cover image selection step
