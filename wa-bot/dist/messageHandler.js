@@ -22,6 +22,7 @@ class MessageHandler {
         this.pendingState = null;
         this.bulkState = null;
         this.researchState = null; // For /new command
+        this.posterState = null; // For /poster command
         this.scheduledQueue = [];
         this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
         // Production group (default target)
@@ -95,6 +96,12 @@ class MessageHandler {
                 if (handled)
                     return;
             }
+            // Check for poster state responses (/poster flow)
+            if (this.posterState) {
+                const handled = await this.handlePosterResponse(from, messageText, message);
+                if (handled)
+                    return;
+            }
             // Detect if this is an FGB broadcast
             const detection = (0, detector_1.detectFGBBroadcast)(message);
             if (detection.isFGBBroadcast) {
@@ -158,6 +165,9 @@ class MessageHandler {
                 case '/flush':
                     await this.flushQueue(from);
                     return true;
+                case '/poster':
+                    await this.startPosterMode(from, args);
+                    return true;
                 default:
                     return false;
             }
@@ -188,24 +198,17 @@ class MessageHandler {
 *Research Mode (Buat dari Nol):*
 /new <judul buku> - Cari buku di internet
 /queue - Lihat antrian broadcast terjadwal
-/flush - Kirim semua antrian SEKARANG (10-15 detik interval)
+/flush - Kirim semua antrian SEKARANG
+
+*Poster Mode (BARU!):* 🎨
+/poster [platform] - Buat poster dari cover
+  - Kirim cover, reply DONE, dapat poster!
+  - Platforms: ig_story, ig_square, wa_status
 
 *Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
 2. Bot akan generate draft dengan harga +markup
 3. Reply YES untuk kirim ke grup
-
-*Cara pakai (Bulk):*
-1. Kirim /bulk atau /bulk 3 untuk level racun
-2. Forward banyak broadcast FGB
-3. Kirim /done untuk proses semua
-4. Preview akan muncul, reply YES/SCHEDULE X
-
-*Cara pakai (/new):*
-1. Kirim /new Encyclopedia Britannica Kids
-2. Pilih buku dengan reply angka
-3. Isi detail: 350000 hb jan 26 close 25 dec
-4. Review draft, reply YES untuk kirim
 
 *Tips:*
 - JID grup format: 120363XXXXX@g.us
@@ -1790,6 +1793,227 @@ Kirim /done kalau sudah selesai.
                 }
             }
             this.researchState = null;
+        }
+    }
+    // ==================== POSTER GENERATION FLOW ====================
+    async startPosterMode(from, args) {
+        // Clear any existing state
+        this.clearPosterState();
+        // Parse args for platform preset
+        const platform = args.trim() || 'ig_story';
+        // Initialize poster state
+        this.posterState = {
+            state: 'collecting',
+            imagePaths: [],
+            platform,
+            backgroundStyle: 'gradient',
+            timestamp: Date.now()
+        };
+        // Send instructions
+        await this.sock.sendMessage(from, {
+            text: `🎨 *POSTER MODE STARTED*
+
+📸 *Kirim gambar cover buku* (1-25 foto)
+✅ Selesai kirim foto? Reply *DONE*
+
+*Platform:* ${platform} (1080x1920)
+*Background:* gradient (default)
+
+*Tips:*
+• Bisa kirim foto satu-satu atau sekaligus
+• Reply CANCEL untuk batalkan
+• Reply BG untuk pilih background lain`
+        });
+        logger.info(`Poster mode started, platform=${platform}`);
+    }
+    async handlePosterResponse(from, text, message) {
+        if (!this.posterState)
+            return false;
+        // Check if state is expired (10 minutes)
+        if (Date.now() - this.posterState.timestamp > 10 * 60 * 1000) {
+            logger.info('Poster state expired');
+            this.clearPosterState();
+            return false;
+        }
+        const lowerText = text.toLowerCase().trim();
+        // STATE: Collecting images
+        if (this.posterState.state === 'collecting') {
+            // Check for DONE
+            if (lowerText === 'done' || lowerText === 'selesai') {
+                if (this.posterState.imagePaths.length === 0) {
+                    await this.sock.sendMessage(from, {
+                        text: '⚠️ Belum ada gambar yang dikirim. Kirim cover buku dulu ya!'
+                    });
+                    return true;
+                }
+                await this.startPosterGeneration(from);
+                return true;
+            }
+            // Check for CANCEL
+            if (lowerText === 'cancel' || lowerText === 'batal') {
+                await this.sock.sendMessage(from, { text: '❌ Poster mode dibatalkan.' });
+                this.clearPosterState();
+                return true;
+            }
+            // Check for BG (background selection)
+            if (lowerText === 'bg' || lowerText === 'background') {
+                await this.showBackgroundOptions(from);
+                return true;
+            }
+            // Check for TITLE
+            if (lowerText.startsWith('title ') || lowerText.startsWith('judul ')) {
+                this.posterState.title = text.substring(text.indexOf(' ') + 1);
+                await this.sock.sendMessage(from, {
+                    text: `✅ Title set: "${this.posterState.title}"`
+                });
+                return true;
+            }
+            // Check if message has image
+            const content = message.message;
+            if (content?.imageMessage) {
+                await this.collectPosterImage(from, message);
+                return true;
+            }
+            // Background selection shortcuts
+            const bgOptions = ['gradient', 'stripes', 'solid', 'ai_creative'];
+            if (bgOptions.includes(lowerText)) {
+                this.posterState.backgroundStyle = lowerText;
+                await this.sock.sendMessage(from, {
+                    text: `✅ Background: ${lowerText}\n\nLanjut kirim foto, atau DONE jika sudah.`
+                });
+                return true;
+            }
+            return false;
+        }
+        // STATE: Preview (after generation)
+        if (this.posterState.state === 'preview') {
+            // Check for SAVE/YES
+            if (lowerText === 'yes' || lowerText === 'save' || lowerText === 'simpan') {
+                await this.sock.sendMessage(from, {
+                    text: '✅ Poster sudah tersimpan di chat ini. Silakan download!'
+                });
+                this.clearPosterState();
+                return true;
+            }
+            // Check for CANCEL
+            if (lowerText === 'cancel' || lowerText === 'batal') {
+                await this.sock.sendMessage(from, { text: '❌ Poster dibatalkan.' });
+                this.clearPosterState();
+                return true;
+            }
+            // Check for REGEN with different settings
+            if (lowerText === 'regen' || lowerText === 'ulang') {
+                await this.startPosterGeneration(from);
+                return true;
+            }
+        }
+        return false;
+    }
+    async collectPosterImage(from, message) {
+        if (!this.posterState)
+            return;
+        try {
+            const content = message.message?.imageMessage;
+            if (!content)
+                return;
+            // Download image
+            const { downloadMediaMessage } = await this.baileysPromise;
+            const buffer = await downloadMediaMessage(message, 'buffer', {});
+            // Save to media folder
+            const filename = `poster_${Date.now()}_${this.posterState.imagePaths.length}.jpg`;
+            const filepath = path_1.default.join(this.mediaPath, filename);
+            await fs_2.promises.writeFile(filepath, buffer);
+            this.posterState.imagePaths.push(filepath);
+            this.posterState.timestamp = Date.now(); // Reset timeout
+            await this.sock.sendMessage(from, {
+                text: `✓ ${this.posterState.imagePaths.length} foto collected`
+            });
+            logger.info(`Poster image collected: ${filepath} (total: ${this.posterState.imagePaths.length})`);
+        }
+        catch (error) {
+            logger.error('Failed to collect poster image:', error);
+            await this.sock.sendMessage(from, {
+                text: `⚠️ Gagal simpan foto: ${error.message}`
+            });
+        }
+    }
+    async showBackgroundOptions(from) {
+        await this.sock.sendMessage(from, {
+            text: `🎨 *Pilih Background Style:*
+
+Reply dengan salah satu:
+• *gradient* - 🌈 Gradasi warna dari cover
+• *stripes* - 📊 Garis vertikal warna cover
+• *solid* - ⬜ Warna solid
+• *ai_creative* - 🎨 AI buat background kreatif
+
+Atau lanjut kirim foto.`
+        });
+    }
+    async startPosterGeneration(from) {
+        if (!this.posterState || this.posterState.imagePaths.length === 0) {
+            await this.sock.sendMessage(from, {
+                text: '❌ Tidak ada gambar untuk diproses.'
+            });
+            return;
+        }
+        this.posterState.state = 'generating';
+        try {
+            await this.sock.sendMessage(from, {
+                text: `⏳ *Generating poster...*
+
+📸 ${this.posterState.imagePaths.length} foto
+🖼️ Platform: ${this.posterState.platform}
+🎨 Background: ${this.posterState.backgroundStyle}
+${this.posterState.title ? `📝 Title: ${this.posterState.title}` : ''}`
+            });
+            // Call AI Processor
+            const posterBuffer = await this.aiClient.generatePoster(this.posterState.imagePaths, this.posterState.platform, this.posterState.title, this.posterState.backgroundStyle, this.posterState.customLayout);
+            // Save poster locally
+            const posterFilename = `poster_result_${Date.now()}.png`;
+            const posterPath = path_1.default.join(this.mediaPath, posterFilename);
+            await fs_2.promises.writeFile(posterPath, posterBuffer);
+            this.posterState.state = 'preview';
+            this.posterState.posterPath = posterPath;
+            // Send poster to user
+            await this.sock.sendMessage(from, {
+                image: { url: posterPath },
+                caption: `🎨 *POSTER GENERATED!*
+
+📸 ${this.posterState.imagePaths.length} covers
+📐 ${this.posterState.platform}
+
+Reply:
+• *YES* - Simpan & selesai
+• *REGEN* - Generate ulang
+• *CANCEL* - Batalkan`
+            });
+            logger.info(`Poster generated: ${posterPath}`);
+        }
+        catch (error) {
+            logger.error('Poster generation failed:', error);
+            await this.sock.sendMessage(from, {
+                text: `❌ Gagal generate poster: ${error.message}`
+            });
+            this.clearPosterState();
+        }
+    }
+    clearPosterState() {
+        if (this.posterState) {
+            // Cleanup collected images
+            for (const filepath of this.posterState.imagePaths) {
+                try {
+                    if (fs_1.default.existsSync(filepath)) {
+                        fs_1.default.unlinkSync(filepath);
+                        logger.debug(`Cleaned up poster image: ${filepath}`);
+                    }
+                }
+                catch (error) {
+                    logger.error(`Failed to cleanup poster image:`, error);
+                }
+            }
+            // Keep result poster, cleanup state
+            this.posterState = null;
         }
     }
 }

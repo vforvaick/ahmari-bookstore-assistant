@@ -198,5 +198,49 @@ class AIClient {
             return title;
         }
     }
+    // ============== Poster Generator Methods ==============
+    async getPosterOptions() {
+        try {
+            logger.info('Getting poster options');
+            const response = await this.client.get('/poster/options');
+            return response.data;
+        }
+        catch (error) {
+            logger.error('Get poster options failed:', error.message);
+            throw new Error(`Failed to get poster options: ${error.message}`);
+        }
+    }
+    async generatePoster(imagePaths, platform = 'ig_story', title, backgroundStyle = 'gradient', customLayout) {
+        try {
+            logger.info(`Generating poster with ${imagePaths.length} images, platform=${platform}`);
+            const FormData = require('form-data');
+            const fs = require('fs');
+            const formData = new FormData();
+            // Add images
+            for (const imagePath of imagePaths) {
+                formData.append('images', fs.createReadStream(imagePath));
+            }
+            // Add parameters as query string
+            const params = new URLSearchParams({
+                platform,
+                background_style: backgroundStyle,
+            });
+            if (title)
+                params.append('title', title);
+            if (customLayout)
+                params.append('custom_layout', customLayout);
+            const response = await this.client.post(`/poster/generate?${params.toString()}`, formData, {
+                headers: formData.getHeaders(),
+                responseType: 'arraybuffer',
+                timeout: 120000, // 2 minutes for poster generation
+            });
+            logger.info('Poster generated successfully');
+            return Buffer.from(response.data);
+        }
+        catch (error) {
+            logger.error('Poster generation failed:', error.message);
+            throw new Error(`Poster generation failed: ${error.message}`);
+        }
+    }
 }
 exports.AIClient = AIClient;

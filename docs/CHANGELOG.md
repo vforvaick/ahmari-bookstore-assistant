@@ -4,10 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### In Progress
+- **Poster Generator Feature** - Hybrid AI + Code image manipulation for creating promotional posters.
+  - Phase 1 (Core Engine): ✅ Complete
+  - Phase 2 (AI Background): Pending
+  - Phase 3 (WhatsApp Integration): Pending
+  - Phase 4 (Polish): Pending
+
 ### Planned
 - Persistence for conversation state.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
+
+## [2.0.0-alpha] - 2025-12-21 - Poster Generator
+
+### Added
+- **Poster Generator Feature** (`ai-processor/poster/`):
+  - Core: presets.py, analyzer.py, layout.py, renderer.py, generator.py
+  - AI: background.py (5 types: ai_creative, gradient, stripes, solid, user)
+  - API: `/poster/options`, `/poster/generate` endpoints
+
+- **WhatsApp Bot Integration**:
+  - `/poster [platform]` command for poster generation
+  - Multi-image collection flow with DONE/CANCEL
+  - Background selection (gradient/stripes/solid/ai_creative)
+  - Platform presets: ig_story, ig_square, ig_portrait, wa_status
+
+### Technical
+- Added `Pillow>=10.0.0` to requirements.txt
+- Added PosterState interface and posterState field to messageHandler.ts
+- Added getPosterOptions, generatePoster to aiClient.ts
+- API version bumped to 2.2.0
 
 ## [1.9.0] - Search Pagination & User Experience
 ### Added

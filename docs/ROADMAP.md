@@ -6,8 +6,13 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 ## Planned Features
 
 ### High Priority
+- [x] **Poster Generator Feature** ✅
+  - **Why**: Automated poster creation from book covers via WhatsApp.
+  - Phase 1-4 complete: Core, AI Background, API, WA Bot
+  - **Ref**: Session 23e1df10-1953-48ff-8c81-ff6ae009deb2
+
 - [ ] **Conversation State Persistence** (Database Integration)
-  - **Why**: Currently state is in-memory; needed for robust YES/EDIT/SCHEDULE workflow reliability across restarts.
+  - **Why**: Currently state is in-memory; needed for robust workflow reliability.
   - **Status**: Blocked by Implementation.
   - **Ref**: Task 11 in original plan.
 
@@ -37,6 +42,12 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 
 ## Recently Completed
+
+- **Poster Generator Phase 1** (2025-12-21)
+  - ✅ Platform dimension presets (IG, WA)
+  - ✅ AI cover detection with Gemini Vision
+  - ✅ Grid layout calculation engine
+  - ✅ Pillow-based image rendering
 
 - **Simplified Research Flow v1.8.1** (2025-12-21)
   - ✅ Deduplicated result display

@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 import logging
 import os
 
@@ -15,6 +16,11 @@ from models import (
     BookSearchRequest, BookSearchResult, BookSearchResponse, ResearchGenerateRequest
 )
 
+# Poster module imports
+from poster import PosterGenerator, get_dimensions, get_background_options
+from poster.presets import get_preset_options
+from poster.api_models import PosterGenerateRequest, PosterOptionsResponse, PosterGenerateResponse
+
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,7 +32,7 @@ class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
-app = FastAPI(title="AI Processor", version="2.1.0")
+app = FastAPI(title="AI Processor", version="2.2.0")
 
 # CORS middleware
 app.add_middleware(
@@ -42,6 +48,7 @@ parser = FGBParser()
 gemini_client = GeminiClient()  # Reads API keys from environment
 formatter = OutputFormatter(price_markup=settings.price_markup)
 book_researcher = BookResearcher()  # For /research endpoint
+poster_generator = PosterGenerator()  # For /poster endpoints
 
 class ParseRequest(BaseModel):
     text: str
@@ -460,3 +467,102 @@ async def get_display_title(title: str, source_url: str, publisher: str = None):
         "display_title": display_title
     }
 
+
+# ==================== POSTER GENERATOR ENDPOINTS ====================
+
+@app.get("/poster/options", response_model=PosterOptionsResponse)
+async def get_poster_options():
+    """
+    Get available options for poster generation.
+    
+    Returns available platform presets and background styles.
+    """
+    return PosterOptionsResponse(
+        platforms=get_preset_options(),
+        backgrounds=get_background_options()
+    )
+
+
+@app.post("/poster/generate")
+async def generate_poster(
+    images: List[UploadFile] = File(...),
+    platform: str = "ig_story",
+    title: str = None,
+    background_style: str = "gradient",
+    custom_layout: str = None
+):
+    """
+    Generate poster from uploaded cover images.
+    
+    Args:
+        images: List of source images containing book covers
+        platform: Platform preset (ig_story, ig_square, wa_status, etc.)
+        title: Optional title text for the poster
+        background_style: ai_creative, gradient, stripes, solid
+        custom_layout: Optional layout like "3-3-3" for 9 covers in 3 rows
+        
+    Returns:
+        Generated poster as image file
+    """
+    import traceback
+    from pathlib import Path
+    from PIL import Image
+    import io
+    import uuid
+    
+    try:
+        logger.info(f"Generating poster with {len(images)} images, platform={platform}, bg={background_style}")
+        
+        # Load uploaded images
+        pil_images = []
+        for upload in images:
+            content = await upload.read()
+            img = Image.open(io.BytesIO(content))
+            pil_images.append(img)
+        
+        # Parse dimensions
+        width, height = get_dimensions(preset=platform)
+        
+        # Parse custom layout
+        layout = None
+        if custom_layout:
+            try:
+                layout = [int(x) for x in custom_layout.split("-")]
+            except:
+                pass
+        
+        # Generate poster
+        poster = await poster_generator.generate(
+            source_images=pil_images,
+            platform=platform,
+            dimensions=(width, height),
+            title_text=title,
+            background_style=background_style,
+            custom_layout=layout
+        )
+        
+        # Save to temp file
+        output_dir = Path("/tmp/posters")
+        output_dir.mkdir(exist_ok=True)
+        
+        filename = f"poster_{uuid.uuid4().hex[:8]}.png"
+        output_path = output_dir / filename
+        
+        poster.save(output_path, format="PNG")
+        
+        logger.info(f"Poster generated: {output_path}")
+        
+        return FileResponse(
+            path=str(output_path),
+            media_type="image/png",
+            filename=filename
+        )
+        
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Poster generation error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Poster generation failed: {e}"
+        )
