@@ -311,10 +311,13 @@ class BookResearcher:
                 if metatags:
                     image_url = metatags[0].get('og:image')
             
+            # Extract publisher from URL (preferred) or snippet (fallback)
+            publisher = self._extract_publisher_from_url(link) or self._extract_publisher(snippet)
+            
             result = BookSearchResult(
                 title=self._clean_title(raw_title),
                 author=self._extract_author(snippet, raw_title),
-                publisher=self._extract_publisher(snippet),
+                publisher=publisher,
                 description=snippet,
                 image_url=image_url,
                 source_url=link,
