@@ -111,10 +111,37 @@ class AIClient {
     }
     async downloadResearchImage(imageUrl) {
         try {
-            logger.info(`Downloading research image...`);
-            const response = await this.client.post('/research/download-image', null, { params: { image_url: imageUrl } });
-            logger.info(`Image saved: ${response.data.filepath}`);
-            return response.data.filepath;
+            logger.info(`Downloading research image directly: ${imageUrl}`);
+            // Download image directly in WA Bot container (not via AI Processor)
+            const axios = require('axios');
+            const fs = require('fs');
+            const path = require('path');
+            const response = await axios.get(imageUrl, {
+                responseType: 'arraybuffer',
+                timeout: 30000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; BookBot/1.0)'
+                }
+            });
+            // Determine file extension from content-type or URL
+            const contentType = response.headers['content-type'] || '';
+            let ext = '.jpg';
+            if (contentType.includes('png'))
+                ext = '.png';
+            else if (contentType.includes('webp'))
+                ext = '.webp';
+            else if (contentType.includes('gif'))
+                ext = '.gif';
+            // Save to media directory (shared volume or local)
+            const mediaDir = path.join(process.cwd(), 'media');
+            if (!fs.existsSync(mediaDir)) {
+                fs.mkdirSync(mediaDir, { recursive: true });
+            }
+            const filename = `cover_${Date.now()}${ext}`;
+            const filepath = path.join(mediaDir, filename);
+            fs.writeFileSync(filepath, response.data);
+            logger.info(`Image saved locally: ${filepath}`);
+            return filepath;
         }
         catch (error) {
             logger.error('Image download failed:', error.message);
