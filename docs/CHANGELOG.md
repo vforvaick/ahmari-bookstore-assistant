@@ -9,6 +9,14 @@ All notable changes to this project will be documented in this file.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
 
+## [1.9.0] - Search Pagination & User Experience
+### Added
+- **Search Pagination:** Fetch 10 results (API max) and display 5 per page with `NEXT` / `PREV` navigation.
+- **Clean EDIT Draft:** Choosing `EDIT` (6) now auto-sends the clean draft text for easy copy-pasting.
+
+### Improved
+- **No-Results Hint:** Better error message suggesting to add publisher or be more specific.
+
 ## [1.8.2] - Feedback-Driven Research & Fixes
 
 ### Added
