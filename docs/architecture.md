@@ -57,10 +57,13 @@ graph TD
     - **Level 1 (Standard)**: Informative, soft-sell tone.
     - **Level 2 (Recommended)**: Persuasive, value-driven tone.
     - **Level 3 (Top Pick)**: "Racun Mode", high urgency, includes `⭐ Top Pick Ahmari Bookstore` marker.
-  - **Web Research** (v1.6.0):
+  - **Web Research** (v1.6.0, enhanced in v1.8.0):
     - `book_researcher.py`: Google Custom Search API integration for finding book info.
     - `/research` endpoint: Search books by title/query.
     - `/research/generate` endpoint: Generate promo from researched book + user details.
+    - `/research/enrich` (v1.8.0): Aggregate descriptions from multiple sources.
+    - `/research/search-images` (v1.8.0): Find cover images via Google Image Search.
+    - **Display Title Logic**: Automatically extracts publisher from URL and cleans title.
   - Provides REST API endpoints (`/parse`, `/generate`, `/research`, `/config`) for the WA Bot.
   - Runtime configurable price markup via `/config` endpoint.
 

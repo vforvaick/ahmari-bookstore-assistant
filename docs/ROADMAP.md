@@ -38,6 +38,12 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 
 ## Recently Completed
 
+- **Enhanced Research Mode v1.8.0** (2025-12-21)
+  - ✅ Clean display titles (Publisher extraction)
+  - ✅ Cover image selection step
+  - ✅ Enrichment from multiple search sources
+
+
 - **Target Group & Queue Management** (2025-12-20)
   - ✅ DEV vs PRODUCTION target groups (`YES` vs `YES DEV`)
   - ✅ `/queue` command to view pending schedules
