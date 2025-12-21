@@ -217,7 +217,7 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
             "temperature": 0.8,  # Slightly more creative for review
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 2048,  # Increased to 2048 to prevent truncation
+            "max_output_tokens": 4096,  # Increased to 4096 to ensure complete responses
         }
         
         # Get starting index for round-robin
