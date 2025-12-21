@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 - Persistence for conversation state.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
+
+## [1.8.2] - Feedback-Driven Research & Fixes
+
+### Added
+- **Feedback-Driven REGEN:** Option to regenerate AI description based on user feedback (e.g., "terlalu panjang", "kurang menarik").
+- **Numbered Selection:** Draft menu now supports number inputs (1-7) for all options (YES, DEV, COVER, LINKS, REGEN, EDIT, CANCEL).
+- **Publisher Domain Mapping:** Enhanced publisher extraction using source URL domains (e.g., flyingeyebooks.com → Flying Eye Books).
+
+### Fixed
+- **Cover Image Draft:** Fixed issue where cover image wasn't appearing in draft (cross-container path issue).
+- **Truncated Descriptions:** Increased AI max output tokens to 4096 to prevent cut-off reviews.
+- **Publisher Display:** Fixed missing publisher name in draft header by improving extraction logic.
+
 ## [1.8.1] - 2025-12-21
 
 ### Added

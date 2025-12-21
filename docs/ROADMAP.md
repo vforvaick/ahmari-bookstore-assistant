@@ -43,7 +43,9 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
   - ✅ Auto-download cover
   - ✅ COVER option in draft
 
-- **Enhanced Research Mode v1.8.0** (2025-12-21)
+- **Enhanced Research Mode v1.8.2** (2025-12-21)
+
+- **Enhanced Research Mode v1.8.1** (2025-12-21)
   - ✅ Clean display titles (Publisher extraction)
   - ✅ Cover image selection step
   - ✅ Enrichment from multiple search sources

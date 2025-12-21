@@ -57,6 +57,11 @@ graph TD
     - **Level 1 (Standard)**: Informative, soft-sell tone.
     - **Level 2 (Recommended)**: Persuasive, value-driven tone.
     - **Level 3 (Top Pick)**: "Racun Mode", high urgency, includes `⭐ Top Pick Ahmari Bookstore` marker.
+ ### 4. Advanced Researcher (v1.8.2)
+- **Flow:** `/new` (search) → Select Book → Details (Price/Format) → Level (1-3) → Draft
+- **Draft Options:** YES / YES DEV / COVER / LINKS / REGEN / EDIT / CANCEL
+- **Feedback Loop:** REGEN option asks for user feedback ("too long", "add info") → AI regenerates with instruction
+- **Publisher Extraction:** Robust 3-layer system (URL domain → Snippet → AI Guess)
   - **Web Research** (v1.6.0, enhanced in v1.8.0):
     - `book_researcher.py`: Google Custom Search API integration for finding book info.
     - `/research` endpoint: Search books by title/query.
