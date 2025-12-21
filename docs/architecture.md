@@ -24,6 +24,10 @@ graph TD
     WABot -->|Job Payload| Scheduler[Queue Scheduler]
     Scheduler -->|Cron Trigger| WABot
     
+    WABot -->|Poster Request| AI
+    AI -->|Poster Image| WABot
+    AI -->|Generate Background| Gemini
+    
     WABot -->|Persist| DB[(SQLite Database)]
     Scheduler -->|Read Queue| DB
     
@@ -43,20 +47,27 @@ graph TD
   - Handles interactive conversation flow (YES / EDIT DULU / SCHEDULE).
   - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
   - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
+  - **Poster Mode** (v2.0.0): `/poster` command for creating promotional posters from book covers.
   - Executes final broadcasts to target groups.
-  - Manages conversation state (single, bulk, and research modes).
+  - Manages conversation state (single, bulk, research, and poster modes).
 
 ### 2. AI Processor Service (Python + FastAPI)
-- **Role**: Logic core for parsing and broadcast generation.
+- **Role**: Logic core for parsing, broadcast generation, and image processing.
 - **Responsibilities**:
   - Parses raw broadcast text using flexible YAML-based rules.
   - **Hybrid Approach** (v1.3.0):
     - **Rule-based** (`output_formatter.py`): Price markup, template structure, link cleanup
     - **AI-based** (`gemini_client.py`): Review paragraph generation, publisher guessing
+  - **Poster Generator** (v2.0.0):
+    - **Core Engine**: `poster/` module with presets, layout engine, and Pillow-based renderer.
+    - **AI Backgrounds**: `background.py` uses Gemini 2.0 Flash to generate creative backgrounds.
+    - **Hybrid Composition**: Combines AI-generated backgrounds with code-based layout precision.
+    - **Styles**: Supports gradients, stripes, solid colors, and AI creative themes.
   - **3-Tier Recommendation System** (v1.4.0):
     - **Level 1 (Standard)**: Informative, soft-sell tone.
     - **Level 2 (Recommended)**: Persuasive, value-driven tone.
     - **Level 3 (Top Pick)**: "Racun Mode", high urgency, includes `⭐ Top Pick Ahmari Bookstore` marker.
+ ### 4. Advanced Researcher (v1.8.2)
  ### 4. Advanced Researcher (v1.8.2)
 - **Flow:** `/new` (search) → Select Book → Details (Price/Format) → Level (1-3) → Draft
 - **Draft Options:** YES / YES DEV / COVER / LINKS / REGEN / EDIT / CANCEL

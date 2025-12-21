@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- VPS optimization scripts (`scripts/vps-setup.sh`, `scripts/health-check.sh`)
+- Memory limits for Docker containers (1GB total: 400M + 350M + 128M + 128M)
+- Auto-restart cron (daily 4 AM WIB) and cleanup (weekly Sunday)
+- 2GB swap file setup for low-memory VPS
+
+### Pending
+- Unit tests for AI processor.
+- Documentation for VPS deployment.
+- Persist scheduled broadcasts to database (currently in-memory only).
+
 ### In Progress
 - **Poster Generator Feature** - Hybrid AI + Code image manipulation for creating promotional posters.
   - Phase 1 (Core Engine): ✅ Complete
@@ -13,8 +24,6 @@ All notable changes to this project will be documented in this file.
 
 ### Planned
 - Persistence for conversation state.
-- Documentation for VPS deployment.
-- Persist scheduled broadcasts to database (currently in-memory only).
 
 ## [2.0.0-alpha] - 2025-12-21 - Poster Generator
 

@@ -17,6 +17,12 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+        reservations:
+          memory: 200M
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
       interval: 30s
@@ -44,6 +50,12 @@ services:
       - sqlite-data:/app/data
       - media:/app/media
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 350M
+        reservations:
+          memory: 150M
     depends_on:
       ai-processor:
         condition: service_healthy
@@ -62,6 +74,12 @@ services:
       - sqlite-data:/app/data
       - media:/app/media
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
     depends_on:
       - wa-bot
     networks:
@@ -79,6 +97,12 @@ services:
     volumes:
       - media:/app/media
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
     ports:
       - "3001:3000"
     networks:
