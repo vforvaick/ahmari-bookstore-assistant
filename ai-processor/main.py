@@ -342,3 +342,118 @@ async def search_preview_links(book_title: str, max_links: int = 2):
     except Exception as e:
         logger.error(f"Link search error: {e}")
         raise HTTPException(status_code=500, detail=f"Link search failed: {e}")
+
+
+@app.post("/research/search-images")
+async def search_book_images(book_title: str, max_images: int = 5):
+    """
+    Search for book cover images using Google Image Search.
+    
+    Returns multiple image URLs for user to choose from.
+    
+    Args:
+        book_title: Book title to search images for
+        max_images: Maximum number of images to return (default: 5)
+    
+    Returns:
+        List of image URLs with metadata
+    """
+    import traceback
+    
+    try:
+        logger.info(f"Searching images for: '{book_title}'")
+        
+        images = await book_researcher.search_images(
+            query=book_title,
+            max_images=max_images
+        )
+        
+        return {
+            "status": "success",
+            "book_title": book_title,
+            "images": images,
+            "count": len(images)
+        }
+        
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Image search error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"Image search failed: {e}")
+
+
+@app.post("/research/enrich")
+async def enrich_book_description(book_title: str, current_description: str = "", max_sources: int = 3):
+    """
+    Enrich book description by aggregating from multiple search sources.
+    
+    Searches for more information about the book and combines snippets
+    to create a richer context for AI review generation.
+    
+    Args:
+        book_title: Book title to search for
+        current_description: Existing description (will be included)
+        max_sources: Maximum number of sources to aggregate (default: 3)
+    
+    Returns:
+        Enriched description combining multiple sources
+    """
+    import traceback
+    
+    try:
+        logger.info(f"Enriching description for: '{book_title}'")
+        
+        enriched = await book_researcher.enrich_description(
+            book_title=book_title,
+            current_description=current_description,
+            max_sources=max_sources
+        )
+        
+        return {
+            "status": "success",
+            "book_title": book_title,
+            "enriched_description": enriched["description"],
+            "sources_used": enriched["sources_count"]
+        }
+        
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Enrichment error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"Description enrichment failed: {e}")
+
+
+@app.post("/research/display-title")
+async def get_display_title(title: str, source_url: str, publisher: str = None):
+    """
+    Get clean display title with publisher: 'Book Title | Publisher: X'
+    
+    Args:
+        title: Raw book title
+        source_url: Source URL for publisher extraction
+        publisher: Optional publisher override
+    
+    Returns:
+        Formatted display title
+    """
+    from book_researcher import BookSearchResult
+    
+    result = BookSearchResult(
+        title=title,
+        source_url=source_url,
+        publisher=publisher
+    )
+    
+    display_title = book_researcher.get_display_title(result)
+    
+    return {
+        "status": "success",
+        "display_title": display_title
+    }
+

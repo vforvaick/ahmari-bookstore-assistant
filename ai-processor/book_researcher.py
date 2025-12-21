@@ -57,22 +57,91 @@ class BookResearcher:
     
     def _clean_title(self, raw_title: str) -> str:
         """Extract clean book title from search result title."""
-        # Remove common suffixes like "- Amazon.com", "| Goodreads", etc.
+        # Remove common suffixes in order of priority
         patterns = [
-            r'\s*[-|]\s*Amazon\.com.*$',
-            r'\s*[-|]\s*Goodreads.*$',
-            r'\s*[-|]\s*Barnes & Noble.*$',
-            r'\s*[-|]\s*Google Books.*$',
-            r'\s*[-|]\s*Waterstones.*$',
-            r'\s*:\s*Amazon\.co\.uk.*$',
-            r'\s*\(\d{4}\)$',  # Year in parentheses
+            # Site names
+            r'\s*[-|–]\s*Amazon\.com.*$',
+            r'\s*[-|–]\s*Amazon\.co\.uk.*$',
+            r'\s*[-|–]\s*Goodreads.*$',
+            r'\s*[-|–]\s*Barnes\s*[&\+]\s*Noble.*$',
+            r'\s*[-|–]\s*Google Books.*$',
+            r'\s*[-|–]\s*Waterstones.*$',
+            r'\s*[-|–]\s*Book Depository.*$',
+            r'\s*[-|–]\s*Booktopia.*$',
+            r'\s*[-|–]\s*Wordery.*$',
+            r'\s*[-|–]\s*Blackwell.*$',
+            # Prize/Award suffixes
+            r'\s*[-|–]\s*The\s+\w+\s+Prize.*$',
+            r'\s*[-|–]\s*\w+\s+Prize.*$',
+            r'\s*\|\s*Official.*$',
+            # Author patterns (after dash/em-dash)
+            r'\s*[-|–]\s*[A-Z][a-z]+\s+[A-Z][a-z]+\s*$',
+            r'\s*[-|–]\s*[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Z][a-z]+\s*$',
+            # ISBN/Year
+            r'\s*:\s*\d{10,13}.*$',
+            r'\s*\(\d{4}\)$',
+            # Publisher site patterns  
+            r'\s*[-|–]\s*Flying Eye Books.*$',
+            r'\s*[-|–]\s*Wide Eyed Editions.*$',
+            r'\s*[-|–]\s*Big Picture Press.*$',
+            r'\s*[-|–]\s*Templar.*$',
+            r'\s*[-|–]\s*Nosy Crow.*$',
+            r'\s*[-|–]\s*Walker Books.*$',
+            r'\s*[-|–]\s*Bloomsbury.*$',
         ]
         
         title = raw_title
         for pattern in patterns:
             title = re.sub(pattern, '', title, flags=re.IGNORECASE)
         
+        # Remove trailing punctuation
+        title = re.sub(r'[\s:|-]+$', '', title)
+        
         return title.strip()
+    
+    def _extract_publisher_from_url(self, url: str) -> Optional[str]:
+        """Extract publisher name from source URL domain."""
+        publisher_domains = {
+            'flyingeyebooks.com': 'Flying Eye Books',
+            'wideeyededitions.com': 'Wide Eyed Editions',
+            'bigpicturepress.net': 'Big Picture Press',
+            'nosycrow.com': 'Nosy Crow',
+            'walker.co.uk': 'Walker Books',
+            'walkerbooks.com': 'Walker Books',
+            'templar.co.uk': 'Templar Publishing',
+            'usborne.com': 'Usborne',
+            'dk.com': 'DK Publishing',
+            'scholastic.com': 'Scholastic',
+            'britannica.com': 'Britannica',
+            'phaidon.com': 'Phaidon',
+            'chroniclebooks.com': 'Chronicle Books',
+            'candlewick.com': 'Candlewick Press',
+            'quartoknows.com': 'Quarto',
+            'harpercollins.com': 'HarperCollins',
+            'simonandschuster.com': 'Simon & Schuster',
+            'bloomsbury.com': 'Bloomsbury',
+        }
+        
+        url_lower = url.lower()
+        for domain, publisher in publisher_domains.items():
+            if domain in url_lower:
+                return publisher
+        
+        return None
+    
+    def get_display_title(self, result: 'BookSearchResult') -> str:
+        """Get formatted display title: 'Book Title | Publisher: X'"""
+        title = result.title
+        
+        # Try to get publisher from URL first, then from extracted publisher
+        publisher = self._extract_publisher_from_url(result.source_url)
+        if not publisher:
+            publisher = result.publisher
+        
+        if publisher:
+            return f"{title} | Publisher: {publisher}"
+        else:
+            return title
     
     def _extract_author(self, snippet: str, title: str) -> Optional[str]:
         """Try to extract author name from snippet."""
@@ -336,7 +405,153 @@ class BookResearcher:
                     continue
         
         logger.info(f"Returning {len(valid_links)} valid preview links")
-        return valid_links# Simple test
+        return valid_links
+    
+    async def search_images(
+        self,
+        query: str,
+        max_images: int = 5
+    ) -> List[dict]:
+        """
+        Search for book cover images using Google Image Search.
+        
+        Args:
+            query: Book title to search images for
+            max_images: Maximum number of images to return
+            
+        Returns:
+            List of dicts with image info: {url, width, height, source}
+        """
+        if not self.api_key or not self.search_engine_id:
+            raise ValueError("Google Search API not configured.")
+        
+        # Search for book cover images
+        search_query = f"{query} book cover"
+        
+        params = {
+            'key': self.api_key,
+            'cx': self.search_engine_id,
+            'q': search_query,
+            'num': min(max_images + 5, 10),  # Get extra to filter
+            'searchType': 'image',  # Image search!
+            'imgType': 'photo',
+            'imgSize': 'large',
+        }
+        
+        logger.info(f"Searching images for: '{query}'")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(self.base_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Google Image Search API error: {e}")
+            raise RuntimeError(f"Image search failed: {e}")
+        
+        images = []
+        items = data.get('items', [])
+        
+        logger.info(f"Found {len(items)} image results")
+        
+        for item in items:
+            if len(images) >= max_images:
+                break
+            
+            image_info = item.get('image', {})
+            link = item.get('link', '')
+            
+            # Skip very small images
+            width = image_info.get('width', 0)
+            height = image_info.get('height', 0)
+            if width < 200 or height < 200:
+                continue
+            
+            images.append({
+                'url': link,
+                'width': width,
+                'height': height,
+                'thumbnail': image_info.get('thumbnailLink', ''),
+                'source': item.get('displayLink', '')
+            })
+        
+        logger.info(f"Returning {len(images)} valid images")
+        return images
+    
+    async def enrich_description(
+        self,
+        book_title: str,
+        current_description: str = "",
+        max_sources: int = 3
+    ) -> dict:
+        """
+        Enrich book description by aggregating snippets from multiple sources.
+        
+        Args:
+            book_title: Book title to search for
+            current_description: Existing description to include
+            max_sources: Number of additional sources to aggregate
+            
+        Returns:
+            Dict with enriched_description and sources_count
+        """
+        if not self.api_key or not self.search_engine_id:
+            raise ValueError("Google Search API not configured.")
+        
+        # Search for detailed book information
+        search_query = f"{book_title} book description synopsis review"
+        
+        params = {
+            'key': self.api_key,
+            'cx': self.search_engine_id,
+            'q': search_query,
+            'num': max_sources + 2,  # Get a few extra
+        }
+        
+        logger.info(f"Enriching description for: '{book_title}'")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(self.base_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Google Search API error: {e}")
+            raise RuntimeError(f"Enrichment search failed: {e}")
+        
+        items = data.get('items', [])
+        logger.info(f"Found {len(items)} sources for enrichment")
+        
+        # Collect unique snippets
+        snippets = []
+        if current_description:
+            snippets.append(current_description)
+        
+        seen_content = set()
+        for item in items[:max_sources]:
+            snippet = item.get('snippet', '')
+            # Normalize for deduplication
+            normalized = ' '.join(snippet.lower().split())
+            
+            # Skip if too similar to existing
+            if normalized in seen_content or len(snippet) < 50:
+                continue
+            
+            seen_content.add(normalized)
+            snippets.append(snippet)
+        
+        # Combine snippets into enriched description
+        enriched = '\n\n'.join(snippets)
+        
+        logger.info(f"Enriched with {len(snippets)} unique sources, length: {len(enriched)}")
+        
+        return {
+            "description": enriched,
+            "sources_count": len(snippets)
+        }
+
+
+# Simple test
 if __name__ == "__main__":
     import asyncio
     
@@ -354,3 +569,4 @@ if __name__ == "__main__":
             print(f"Error: {e}")
     
     asyncio.run(test())
+

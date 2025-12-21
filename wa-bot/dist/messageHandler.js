@@ -1202,22 +1202,50 @@ Kirim /done kalau sudah selesai.
             if (!isNaN(num) && num >= 1 && num <= (this.researchState.results?.length || 0)) {
                 const selectedBook = this.researchState.results[num - 1];
                 this.researchState.selectedBook = selectedBook;
-                this.researchState.state = 'details_pending';
                 this.researchState.timestamp = Date.now();
-                // Try to download image
-                if (selectedBook.image_url) {
-                    try {
-                        const imagePath = await this.aiClient.downloadResearchImage(selectedBook.image_url);
-                        if (imagePath) {
-                            this.researchState.imagePath = imagePath;
-                        }
-                    }
-                    catch (e) {
-                        logger.warn('Failed to download book image:', e);
+                await this.sock.sendMessage(from, { text: '⏳ Mempersiapkan buku...' });
+                // Step 1: Get display title (cleaner format)
+                try {
+                    const displayTitle = await this.aiClient.getDisplayTitle(selectedBook.title, selectedBook.source_url, selectedBook.publisher);
+                    this.researchState.displayTitle = displayTitle;
+                    logger.info(`Display title: ${displayTitle}`);
+                }
+                catch (e) {
+                    logger.warn('Failed to get display title, using raw:', e);
+                    this.researchState.displayTitle = selectedBook.title;
+                }
+                // Step 2: Enrich description from multiple sources
+                try {
+                    const enriched = await this.aiClient.enrichDescription(selectedBook.title, selectedBook.description || selectedBook.snippet || '', 3);
+                    this.researchState.enrichedDescription = enriched.enrichedDescription;
+                    logger.info(`Enriched with ${enriched.sourcesUsed} sources`);
+                }
+                catch (e) {
+                    logger.warn('Failed to enrich description:', e);
+                    this.researchState.enrichedDescription = selectedBook.description || selectedBook.snippet;
+                }
+                // Step 3: Search for cover images
+                try {
+                    const images = await this.aiClient.searchImages(selectedBook.title, 5);
+                    if (images.length > 0) {
+                        this.researchState.imageOptions = images;
+                        this.researchState.state = 'image_selection_pending';
+                        let imgMsg = `✅ *${this.researchState.displayTitle}*\n\n📷 *Pilih cover image:*\n\n`;
+                        images.forEach((img, i) => {
+                            imgMsg += `${i + 1}. ${img.source || 'image'} (${img.width}x${img.height})\n`;
+                        });
+                        imgMsg += `\n0. Tidak pakai gambar\n\n---\nBalas dengan angka (0-${images.length})\nAtau *kirim gambar* untuk pakai cover sendiri`;
+                        await this.sock.sendMessage(from, { text: imgMsg });
+                        return true;
                     }
                 }
+                catch (e) {
+                    logger.warn('Image search failed:', e);
+                }
+                // No images found, skip to details
+                this.researchState.state = 'details_pending';
                 await this.sock.sendMessage(from, {
-                    text: `✅ Dipilih: *${selectedBook.title}*\n${selectedBook.publisher ? `Publisher: ${selectedBook.publisher}\n` : ''}\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
+                    text: `✅ *${this.researchState.displayTitle}*\n\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
                 });
                 return true;
             }
@@ -1230,6 +1258,49 @@ Kirim /done kalau sudah selesai.
             // Invalid selection
             await this.sock.sendMessage(from, {
                 text: `⚠️ Pilih angka 1-${this.researchState.results?.length}.\nAtau kirim /cancel untuk batal.`
+            });
+            return true;
+        }
+        // STATE 1.5: Waiting for image selection (number or sent image)
+        if (this.researchState.state === 'image_selection_pending') {
+            const num = parseInt(text.trim());
+            // User selected an image by number
+            if (!isNaN(num) && num >= 0 && num <= (this.researchState.imageOptions?.length || 0)) {
+                if (num === 0) {
+                    // No image
+                    this.researchState.imagePath = undefined;
+                }
+                else {
+                    // Download selected image
+                    const selectedImage = this.researchState.imageOptions[num - 1];
+                    try {
+                        await this.sock.sendMessage(from, { text: '⬇️ Downloading cover...' });
+                        const imagePath = await this.aiClient.downloadResearchImage(selectedImage.url);
+                        if (imagePath) {
+                            this.researchState.imagePath = imagePath;
+                        }
+                    }
+                    catch (e) {
+                        logger.warn('Failed to download selected image:', e);
+                    }
+                }
+                // Proceed to details
+                this.researchState.state = 'details_pending';
+                this.researchState.timestamp = Date.now();
+                await this.sock.sendMessage(from, {
+                    text: `${this.researchState.imagePath ? '✅ Cover tersimpan!\n\n' : ''}📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
+                });
+                return true;
+            }
+            // Check for cancel
+            if (text.includes('cancel') || text.includes('batal')) {
+                await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+                this.clearResearchState();
+                return true;
+            }
+            // Invalid selection
+            await this.sock.sendMessage(from, {
+                text: `⚠️ Pilih angka 0-${this.researchState.imageOptions?.length}.\nAtau kirim gambar untuk cover sendiri.`
             });
             return true;
         }
@@ -1268,8 +1339,16 @@ Kirim /done kalau sudah selesai.
                     text: `⏳ Generating level ${level} draft...`
                 });
                 try {
+                    // Create enriched book data for generation
+                    const enrichedBook = {
+                        ...this.researchState.selectedBook,
+                        // Use display title if available
+                        title: this.researchState.displayTitle || this.researchState.selectedBook.title,
+                        // Use enriched description for better AI context
+                        description: this.researchState.enrichedDescription || this.researchState.selectedBook.description
+                    };
                     const generated = await this.aiClient.generateFromResearch({
-                        book: this.researchState.selectedBook,
+                        book: enrichedBook,
                         price_main: this.researchState.details.price,
                         format: this.researchState.details.format || 'HB',
                         eta: this.researchState.details.eta,

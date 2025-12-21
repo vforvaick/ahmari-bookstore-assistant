@@ -133,5 +133,43 @@ class AIClient {
             throw new Error(`Preview link search failed: ${error.message}`);
         }
     }
+    async searchImages(bookTitle, maxImages = 5) {
+        try {
+            logger.info(`Searching images for: "${bookTitle}"`);
+            const response = await this.client.post('/research/search-images', null, { params: { book_title: bookTitle, max_images: maxImages } });
+            logger.info(`Found ${response.data.count} images`);
+            return response.data.images;
+        }
+        catch (error) {
+            logger.error('Image search failed:', error.message);
+            throw new Error(`Image search failed: ${error.message}`);
+        }
+    }
+    async enrichDescription(bookTitle, currentDescription = '', maxSources = 3) {
+        try {
+            logger.info(`Enriching description for: "${bookTitle}"`);
+            const response = await this.client.post('/research/enrich', null, { params: { book_title: bookTitle, current_description: currentDescription, max_sources: maxSources } });
+            logger.info(`Enriched with ${response.data.sources_used} sources`);
+            return {
+                enrichedDescription: response.data.enriched_description,
+                sourcesUsed: response.data.sources_used
+            };
+        }
+        catch (error) {
+            logger.error('Description enrichment failed:', error.message);
+            throw new Error(`Description enrichment failed: ${error.message}`);
+        }
+    }
+    async getDisplayTitle(title, sourceUrl, publisher) {
+        try {
+            const response = await this.client.post('/research/display-title', null, { params: { title, source_url: sourceUrl, publisher: publisher || '' } });
+            return response.data.display_title;
+        }
+        catch (error) {
+            logger.error('Get display title failed:', error.message);
+            // Fallback to raw title
+            return title;
+        }
+    }
 }
 exports.AIClient = AIClient;

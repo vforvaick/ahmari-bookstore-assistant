@@ -204,4 +204,74 @@ export class AIClient {
       throw new Error(`Preview link search failed: ${error.message}`);
     }
   }
+
+  async searchImages(bookTitle: string, maxImages: number = 5): Promise<Array<{
+    url: string;
+    width: number;
+    height: number;
+    thumbnail?: string;
+    source?: string;
+  }>> {
+    try {
+      logger.info(`Searching images for: "${bookTitle}"`);
+      const response = await this.client.post<{
+        status: string;
+        book_title: string;
+        images: Array<{ url: string; width: number; height: number; thumbnail?: string; source?: string }>;
+        count: number;
+      }>(
+        '/research/search-images',
+        null,
+        { params: { book_title: bookTitle, max_images: maxImages } }
+      );
+      logger.info(`Found ${response.data.count} images`);
+      return response.data.images;
+    } catch (error: any) {
+      logger.error('Image search failed:', error.message);
+      throw new Error(`Image search failed: ${error.message}`);
+    }
+  }
+
+  async enrichDescription(bookTitle: string, currentDescription: string = '', maxSources: number = 3): Promise<{
+    enrichedDescription: string;
+    sourcesUsed: number;
+  }> {
+    try {
+      logger.info(`Enriching description for: "${bookTitle}"`);
+      const response = await this.client.post<{
+        status: string;
+        book_title: string;
+        enriched_description: string;
+        sources_used: number;
+      }>(
+        '/research/enrich',
+        null,
+        { params: { book_title: bookTitle, current_description: currentDescription, max_sources: maxSources } }
+      );
+      logger.info(`Enriched with ${response.data.sources_used} sources`);
+      return {
+        enrichedDescription: response.data.enriched_description,
+        sourcesUsed: response.data.sources_used
+      };
+    } catch (error: any) {
+      logger.error('Description enrichment failed:', error.message);
+      throw new Error(`Description enrichment failed: ${error.message}`);
+    }
+  }
+
+  async getDisplayTitle(title: string, sourceUrl: string, publisher?: string): Promise<string> {
+    try {
+      const response = await this.client.post<{ status: string; display_title: string }>(
+        '/research/display-title',
+        null,
+        { params: { title, source_url: sourceUrl, publisher: publisher || '' } }
+      );
+      return response.data.display_title;
+    } catch (error: any) {
+      logger.error('Get display title failed:', error.message);
+      // Fallback to raw title
+      return title;
+    }
+  }
 }
+
