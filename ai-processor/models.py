@@ -68,3 +68,5 @@ class ResearchGenerateRequest(BaseModel):
     min_order: Optional[str] = None     # e.g., "3 pcs"
     level: int = 2                      # Recommendation level
     custom_image_path: Optional[str] = None  # If user sends own image
+    user_edit: Optional[str] = None     # User feedback for regeneration
+    userEdit: Optional[str] = None      # Alias for camelCase from TypeScript

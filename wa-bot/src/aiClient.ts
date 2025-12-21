@@ -61,6 +61,7 @@ export interface ResearchGenerateRequest {
   min_order?: string;
   level: number;
   custom_image_path?: string;
+  userEdit?: string;  // User feedback/edit instruction for regeneration
 }
 
 export class AIClient {

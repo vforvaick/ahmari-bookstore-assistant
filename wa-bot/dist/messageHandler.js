@@ -1423,6 +1423,57 @@ Kirim /done kalau sudah selesai.
             });
             return true;
         }
+        // STATE 4.5: Waiting for regeneration feedback
+        if (this.researchState.state === 'regen_feedback_pending') {
+            // Cancel if user sends 0
+            if (text.trim() === '0') {
+                this.researchState.state = 'draft_pending';
+                await this.sock.sendMessage(from, { text: '↩️ Kembali ke draft menu.' });
+                return true;
+            }
+            // Use the feedback to regenerate
+            const userFeedback = text.trim();
+            await this.sock.sendMessage(from, { text: `🔄 Regenerating berdasarkan feedback: _"${userFeedback}"_...` });
+            try {
+                const enrichedBook = {
+                    ...this.researchState.selectedBook,
+                    title: this.researchState.displayTitle || this.researchState.selectedBook.title,
+                    description: this.researchState.enrichedDescription || this.researchState.selectedBook.description
+                };
+                const generated = await this.aiClient.generateFromResearch({
+                    book: enrichedBook,
+                    price_main: this.researchState.details.price,
+                    format: this.researchState.details.format || 'HB',
+                    eta: this.researchState.details.eta,
+                    close_date: this.researchState.details.closeDate,
+                    min_order: this.researchState.details.minOrder,
+                    level: this.researchState.level || 2,
+                    userEdit: userFeedback // Pass feedback to AI prompt
+                });
+                this.researchState.draft = generated.draft;
+                this.researchState.state = 'draft_pending';
+                // Re-display with new draft
+                const imagePath = this.researchState.imagePath;
+                const optionsText = `---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`;
+                if (imagePath && fs_1.default.existsSync(imagePath)) {
+                    await this.sock.sendMessage(from, {
+                        image: { url: imagePath },
+                        caption: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}\n\n${optionsText}`
+                    });
+                }
+                else {
+                    await this.sock.sendMessage(from, {
+                        text: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}\n\n${optionsText}`
+                    });
+                }
+                return true;
+            }
+            catch (error) {
+                this.researchState.state = 'draft_pending';
+                await this.sock.sendMessage(from, { text: `❌ Gagal regenerate: ${error.message}` });
+                return true;
+            }
+        }
         // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL/etc.
         if (this.researchState.state === 'draft_pending' && this.researchState.draft) {
             // Map number selection to commands: 1=YES, 2=YES DEV, 3=COVER, 4=LINKS, 5=REGEN, 6=EDIT, 7=CANCEL
@@ -1438,45 +1489,14 @@ Kirim /done kalau sudah selesai.
                 await this.sendResearchBroadcast(from, this.devGroupJid || undefined);
                 return true;
             }
-            // 5. REGEN - regenerate description with same level
+            // 5. REGEN - ask for feedback first, then regenerate
             if (mappedText === 'regen' || mappedText.includes('regen') || mappedText.includes('ulang')) {
-                await this.sock.sendMessage(from, { text: '🔄 Regenerating description...' });
-                try {
-                    const enrichedBook = {
-                        ...this.researchState.selectedBook,
-                        title: this.researchState.displayTitle || this.researchState.selectedBook.title,
-                        description: this.researchState.enrichedDescription || this.researchState.selectedBook.description
-                    };
-                    const generated = await this.aiClient.generateFromResearch({
-                        book: enrichedBook,
-                        price_main: this.researchState.details.price,
-                        format: this.researchState.details.format || 'HB',
-                        eta: this.researchState.details.eta,
-                        close_date: this.researchState.details.closeDate,
-                        min_order: this.researchState.details.minOrder,
-                        level: this.researchState.level || 2
-                    });
-                    this.researchState.draft = generated.draft;
-                    // Re-display with new draft
-                    const imagePath = this.researchState.imagePath;
-                    const optionsText = `---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`;
-                    if (imagePath && fs_1.default.existsSync(imagePath)) {
-                        await this.sock.sendMessage(from, {
-                            image: { url: imagePath },
-                            caption: `📝 *DRAFT BROADCAST (Regenerated)*\n\n${generated.draft}\n\n${optionsText}`
-                        });
-                    }
-                    else {
-                        await this.sock.sendMessage(from, {
-                            text: `📝 *DRAFT BROADCAST (Regenerated)*\n\n${generated.draft}\n\n${optionsText}`
-                        });
-                    }
-                    return true;
-                }
-                catch (error) {
-                    await this.sock.sendMessage(from, { text: `❌ Gagal regenerate: ${error.message}` });
-                    return true;
-                }
+                // Ask for feedback/evaluation of current description
+                await this.sock.sendMessage(from, {
+                    text: `📝 *Evaluasi deskripsi saat ini:*\n\n_"${this.researchState.draft?.substring(0, 200)}..."_\n\n---\n*Apa yang perlu diperbaiki?*\nContoh:\n• "terlalu panjang"\n• "kurang menarik"\n• "tolong tambahkan info tentang ilustrasi"\n• "ubah jadi lebih santai"\n\nBalas dengan feedback-mu, atau kirim *0* untuk batal.`
+                });
+                this.researchState.state = 'regen_feedback_pending';
+                return true;
             }
             // 6. EDIT
             if (mappedText === 'edit' || mappedText.includes('ubah')) {

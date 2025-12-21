@@ -244,9 +244,12 @@ async def generate_from_research(request: ResearchGenerateRequest):
         )
         
         # Step 2: Generate AI review (reuse existing method)
+        # Accept both camelCase (from TypeScript) and snake_case
+        user_feedback = request.user_edit or request.userEdit
         ai_response = await gemini_client.generate_review(
             parsed_for_ai,
-            level=request.level
+            level=request.level,
+            user_edit=user_feedback
         )
         
         logger.info(f"AI review generated, length: {len(ai_response.review)}")
