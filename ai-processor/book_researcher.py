@@ -60,19 +60,38 @@ class BookResearcher:
         
         Handles formats like:
         - "Alley Cat Rally: Trickartt, Ricky" -> "Alley Cat Rally"
+        - "Alley Cat Rally: 1 : Ricky Trickartt, Ricky Trickartt: Amazon.co.uk: Books" -> "Alley Cat Rally"
         - "Alley Cat Rally – Ricky Trickartt – The Klaus Flugge Prize" -> "Alley Cat Rally"
         - "Alley Cat Rally by Ricky Trickartt" -> "Alley Cat Rally"
         - "Ricky Trickartt on Alley Cat Rally" -> "Alley Cat Rally" (interview)
+        - "Alley Cat Rally is a children's picture book by..." -> "Alley Cat Rally"
         """
         title = raw_title.strip()
+        
+        # Step 0: Remove Amazon suffix first (colon-based)
+        # "Alley Cat Rally: 1 : Ricky Trickartt, Ricky Trickartt: Amazon.co.uk: Books"
+        amazon_patterns = [
+            r':?\s*Amazon\.co\.uk:?\s*:?\s*Books?\s*$',
+            r':?\s*Amazon\.com:?\s*:?\s*Books?\s*$',
+            r':?\s*Amazon\.[a-z.]+.*$',
+        ]
+        for pattern in amazon_patterns:
+            title = re.sub(pattern, '', title, flags=re.IGNORECASE)
         
         # Step 1: Handle "Author on Title" format (interview)
         on_match = re.match(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+on\s+(.+)$', title)
         if on_match:
-            # Swap to get title after "on"
             title = on_match.group(2)
         
-        # Step 2: Remove site name suffixes first
+        # Step 2: Remove "is a children's picture book" and similar descriptors
+        descriptor_patterns = [
+            r'\s+is\s+a\s+children\'?s?\s+(?:picture\s+)?book.*$',
+            r'\s+is\s+a\s+(?:picture\s+)?book.*$',
+        ]
+        for pattern in descriptor_patterns:
+            title = re.sub(pattern, '', title, flags=re.IGNORECASE)
+        
+        # Step 3: Remove site name suffixes (dash/pipe based)
         site_patterns = [
             r'\s*[-|–]\s*Amazon\.com.*$',
             r'\s*[-|–]\s*Amazon\.co\.uk.*$',
@@ -88,42 +107,45 @@ class BookResearcher:
         for pattern in site_patterns:
             title = re.sub(pattern, '', title, flags=re.IGNORECASE)
         
-        # Step 3: Extract first segment (before author/source separators)
-        # Split on common separators: colon, em-dash, pipe, "by"
-        # But be careful: some titles have colons (e.g., "Look Inside: Space")
+        # Step 4: Remove volume numbers like ": 1 :" or ": Vol 1"
+        title = re.sub(r':\s*\d+\s*:', ':', title)
+        title = re.sub(r':\s*(?:Vol\.?\s*)?\d+\s*$', '', title, flags=re.IGNORECASE)
         
-        # Try to find "Author: Last, First" pattern and remove it
-        author_colon = re.match(r'^(.+?):\s*([A-Z][a-z]+),\s*([A-Z][a-z]+)', title)
+        # Step 5: Handle "Title: Author, Author" or "Title : Author" patterns
+        # Look for ": Firstname, Firstname" or ": Firstname Lastname, Firstname Lastname"
+        author_colon = re.match(r'^(.+?):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),\s*([A-Z][a-z]+)', title)
         if author_colon:
             title = author_colon.group(1)
         
-        # Try "by Author" pattern
+        # Step 6: Try "by Author" pattern
         by_match = re.match(r'^(.+?)\s+by\s+[A-Z]', title, re.IGNORECASE)
         if by_match:
             title = by_match.group(1)
         
-        # Handle multiple dashes: take first segment if it looks like a title
-        # "Alley Cat Rally – Ricky Trickartt – Prize" -> "Alley Cat Rally"
+        # Step 7: Handle multiple dashes/pipes - take first segment if it's a real title
         dash_parts = re.split(r'\s*[-–|]\s*', title)
         if len(dash_parts) > 1:
-            # Check if first part looks like a title (not author name)
             first = dash_parts[0].strip()
-            # If first part is 2+ words and not "Firstname Lastname" pattern
             words = first.split()
             if len(words) >= 2:
-                # Check if it's NOT just a "Firstname Lastname" 
+                # Not just "Firstname Lastname"
                 is_author_name = (
                     len(words) == 2 and 
-                    all(w[0].isupper() and w[1:].islower() for w in words if w)
+                    all(w[0].isupper() and len(w) > 1 and w[1:].islower() for w in words if w)
                 )
                 if not is_author_name:
                     title = first
         
-        # Step 4: Final cleanup
-        title = re.sub(r'[\s:|-]+$', '', title)  # trailing punctuation
-        title = re.sub(r'^\s*[:\-–|]\s*', '', title)  # leading punctuation
+        # Step 8: Final cleanup
+        title = re.sub(r'[\s:|\-–]+$', '', title)  # trailing punctuation
+        title = re.sub(r'^[\s:|\-–]+', '', title)  # leading punctuation
         
         return title.strip()
+    
+    def _normalize_for_dedup(self, title: str) -> str:
+        """Normalize title for deduplication comparison."""
+        # Lowercase, remove all non-alphanumeric
+        return re.sub(r'[^a-z0-9]', '', title.lower())
     
     def _extract_publisher_from_url(self, url: str) -> Optional[str]:
         """Extract publisher name from source URL domain."""
@@ -302,7 +324,22 @@ class BookResearcher:
             
             logger.debug(f"Result: {result.title} | Image: {bool(image_url)}")
         
-        return results
+        # Deduplicate by normalized title (keep first with image, or first overall)
+        seen_titles = {}
+        deduped = []
+        for result in results:
+            key = self._normalize_for_dedup(result.title)
+            if key not in seen_titles:
+                seen_titles[key] = result
+                deduped.append(result)
+            elif result.image_url and not seen_titles[key].image_url:
+                # Replace with this one since it has an image
+                idx = deduped.index(seen_titles[key])
+                deduped[idx] = result
+                seen_titles[key] = result
+        
+        logger.info(f"Deduplicated {len(results)} results to {len(deduped)} unique titles")
+        return deduped
     
     async def download_image(
         self,

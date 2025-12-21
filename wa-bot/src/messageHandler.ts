@@ -1429,19 +1429,41 @@ Kirim /done kalau sudah selesai.
         timestamp: Date.now()
       };
 
-      // Build cleaner results message: Title | Publisher 📷
-      let resultsMsg = `📚 *Ditemukan ${deduped.length} buku:*\n\n`;
-      deduped.forEach((book, i) => {
-        const hasImage = book.image_url ? ' 📷' : '';
-        const publisher = book.publisher ? ` | Publisher: ${book.publisher}` : '';
-        resultsMsg += `${i + 1}. *${book.title}*${publisher}${hasImage}\n`;
+      // Send intro message
+      await this.sock.sendMessage(from, {
+        text: `📚 *Ditemukan ${deduped.length} buku:*`
       });
 
-      resultsMsg += `\n---\nBalas dengan *angka* (1-${deduped.length}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`;
+      // Send each result as an image bubble (or text if no image)
+      for (let i = 0; i < deduped.length; i++) {
+        const book = deduped[i];
+        const publisher = book.publisher ? `\nPublisher: ${book.publisher}` : '';
+        const caption = `*${i + 1}. ${book.title}*${publisher}`;
 
-      await this.sock.sendMessage(from, { text: resultsMsg });
+        if (book.image_url) {
+          try {
+            await this.sock.sendMessage(from, {
+              image: { url: book.image_url },
+              caption
+            });
+          } catch (e) {
+            // Fallback to text if image fails
+            await this.sock.sendMessage(from, { text: caption });
+          }
+        } else {
+          await this.sock.sendMessage(from, { text: caption });
+        }
 
-      logger.info(`Book search results shown: ${deduped.length} books (deduplicated from ${searchResponse.count})`);
+        // Small delay between messages to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      // Send selection prompt
+      await this.sock.sendMessage(from, {
+        text: `---\nBalas dengan *angka* (1-${deduped.length}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`
+      });
+
+      logger.info(`Book search results shown: ${deduped.length} books as image bubbles`);
 
     } catch (error: any) {
       logger.error('Book search error:', error);
