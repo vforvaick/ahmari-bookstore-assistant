@@ -1145,10 +1145,10 @@ Kirim /done kalau sudah selesai.
                 text: `🔍 Mencari: "${query}"...\n\nMohon tunggu...`
             });
             // Call AI Processor to search books
-            const searchResponse = await this.aiClient.searchBooks(query, 8); // Get more to allow deduplication
+            const searchResponse = await this.aiClient.searchBooks(query, 10); // Fetch max for pagination
             if (searchResponse.count === 0) {
                 await this.sock.sendMessage(from, {
-                    text: `❌ Tidak ditemukan buku dengan kata kunci "${query}".\n\nCoba kata kunci lain ya!`
+                    text: `❌ Tidak ditemukan buku dengan kata kunci "${query}".\n\n💡 *Tips:* Coba lebih spesifik, misalnya:\n• Tambahkan nama publisher\n• Tulis judul lengkap\n• Gunakan bahasa asli buku`
                 });
                 return;
             }
@@ -1162,21 +1162,26 @@ Kirim /done kalau sudah selesai.
                 }
                 seenTitles.add(normalizedTitle);
                 return true;
-            }).slice(0, 5); // Keep max 5 unique results
+            }).slice(0, 10); // Keep max 10 unique results for pagination
             // Store research state with deduplicated results
             this.researchState = {
                 state: 'selection_pending',
                 query,
                 results: deduped,
                 level: 2, // Default to level 2
+                currentPage: 0, // Start at first page
                 timestamp: Date.now()
             };
-            // Send intro message
+            // Send intro message with page info
+            const totalPages = Math.ceil(deduped.length / 5);
             await this.sock.sendMessage(from, {
-                text: `📚 *Ditemukan ${deduped.length} buku:*`
+                text: `📚 *Ditemukan ${deduped.length} buku:* (halaman 1/${totalPages})`
             });
-            // Send each result as an image bubble (or text if no image)
-            for (let i = 0; i < deduped.length; i++) {
+            // Send first 5 results (page 0)
+            const pageSize = 5;
+            const startIdx = 0;
+            const endIdx = Math.min(pageSize, deduped.length);
+            for (let i = startIdx; i < endIdx; i++) {
                 const book = deduped[i];
                 const publisher = book.publisher ? `\nPublisher: ${book.publisher}` : '';
                 const caption = `*${i + 1}. ${book.title}*${publisher}`;
@@ -1198,9 +1203,11 @@ Kirim /done kalau sudah selesai.
                 // Small delay between messages to avoid rate limiting
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
-            // Send selection prompt
+            // Send selection prompt with NEXT option if more pages
+            const hasMore = deduped.length > pageSize;
+            const nextHint = hasMore ? '\n*NEXT* - lihat 5 hasil berikutnya' : '';
             await this.sock.sendMessage(from, {
-                text: `---\nBalas dengan *angka* (1-${deduped.length}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`
+                text: `---\nBalas dengan *angka* (1-${Math.min(pageSize, deduped.length)}) untuk pilih buku.${nextHint}\n/cancel - batalkan`
             });
             logger.info(`Book search results shown: ${deduped.length} books as image bubbles`);
         }
@@ -1223,6 +1230,103 @@ Kirim /done kalau sudah selesai.
         }
         // STATE 1: Waiting for book selection (number)
         if (this.researchState.state === 'selection_pending') {
+            const lowerText = text.trim().toLowerCase();
+            const pageSize = 5;
+            const totalResults = this.researchState.results?.length || 0;
+            const totalPages = Math.ceil(totalResults / pageSize);
+            const currentPage = this.researchState.currentPage || 0;
+            // Handle NEXT command
+            if (lowerText === 'next' || lowerText === 'n') {
+                if (currentPage < totalPages - 1) {
+                    this.researchState.currentPage = currentPage + 1;
+                    const newPage = currentPage + 1;
+                    const startIdx = newPage * pageSize;
+                    const endIdx = Math.min(startIdx + pageSize, totalResults);
+                    await this.sock.sendMessage(from, {
+                        text: `📚 *Hasil pencarian* (halaman ${newPage + 1}/${totalPages})`
+                    });
+                    for (let i = startIdx; i < endIdx; i++) {
+                        const book = this.researchState.results[i];
+                        const publisher = book.publisher ? `\nPublisher: ${book.publisher}` : '';
+                        const caption = `*${i + 1}. ${book.title}*${publisher}`;
+                        if (book.image_url) {
+                            try {
+                                await this.sock.sendMessage(from, {
+                                    image: { url: book.image_url },
+                                    caption
+                                });
+                            }
+                            catch (e) {
+                                await this.sock.sendMessage(from, { text: caption });
+                            }
+                        }
+                        else {
+                            await this.sock.sendMessage(from, { text: caption });
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                    const hasPrev = newPage > 0;
+                    const hasNext = newPage < totalPages - 1;
+                    const navHints = [
+                        hasPrev ? '*PREV* - halaman sebelumnya' : '',
+                        hasNext ? '*NEXT* - halaman berikutnya' : ''
+                    ].filter(Boolean).join('\n');
+                    await this.sock.sendMessage(from, {
+                        text: `---\nBalas dengan *angka* (${startIdx + 1}-${endIdx}) untuk pilih buku.\n${navHints}\n/cancel - batalkan`
+                    });
+                    return true;
+                }
+                else {
+                    await this.sock.sendMessage(from, { text: '⚠️ Sudah di halaman terakhir.' });
+                    return true;
+                }
+            }
+            // Handle PREV command
+            if (lowerText === 'prev' || lowerText === 'p' || lowerText === 'back') {
+                if (currentPage > 0) {
+                    this.researchState.currentPage = currentPage - 1;
+                    const newPage = currentPage - 1;
+                    const startIdx = newPage * pageSize;
+                    const endIdx = Math.min(startIdx + pageSize, totalResults);
+                    await this.sock.sendMessage(from, {
+                        text: `📚 *Hasil pencarian* (halaman ${newPage + 1}/${totalPages})`
+                    });
+                    for (let i = startIdx; i < endIdx; i++) {
+                        const book = this.researchState.results[i];
+                        const publisher = book.publisher ? `\nPublisher: ${book.publisher}` : '';
+                        const caption = `*${i + 1}. ${book.title}*${publisher}`;
+                        if (book.image_url) {
+                            try {
+                                await this.sock.sendMessage(from, {
+                                    image: { url: book.image_url },
+                                    caption
+                                });
+                            }
+                            catch (e) {
+                                await this.sock.sendMessage(from, { text: caption });
+                            }
+                        }
+                        else {
+                            await this.sock.sendMessage(from, { text: caption });
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                    const hasPrev = newPage > 0;
+                    const hasNext = newPage < totalPages - 1;
+                    const navHints = [
+                        hasPrev ? '*PREV* - halaman sebelumnya' : '',
+                        hasNext ? '*NEXT* - halaman berikutnya' : ''
+                    ].filter(Boolean).join('\n');
+                    await this.sock.sendMessage(from, {
+                        text: `---\nBalas dengan *angka* (${startIdx + 1}-${endIdx}) untuk pilih buku.\n${navHints}\n/cancel - batalkan`
+                    });
+                    return true;
+                }
+                else {
+                    await this.sock.sendMessage(from, { text: '⚠️ Sudah di halaman pertama.' });
+                    return true;
+                }
+            }
             const num = parseInt(text.trim());
             if (!isNaN(num) && num >= 1 && num <= (this.researchState.results?.length || 0)) {
                 const selectedBook = this.researchState.results[num - 1];
@@ -1500,8 +1604,12 @@ Kirim /done kalau sudah selesai.
             }
             // 6. EDIT
             if (mappedText === 'edit' || mappedText.includes('ubah')) {
+                // Send clean draft for easy copy-paste editing
+                if (this.researchState.draft) {
+                    await this.sock.sendMessage(from, { text: this.researchState.draft });
+                }
                 await this.sock.sendMessage(from, {
-                    text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
+                    text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu kirim ulang ke saya!'
                 });
                 this.clearResearchState();
                 return true;
