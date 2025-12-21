@@ -81,5 +81,57 @@ class AIClient {
             throw new Error(`Failed to set markup: ${error.message}`);
         }
     }
+    // ============== Book Research Methods ==============
+    async searchBooks(query, maxResults = 5) {
+        try {
+            logger.info(`Searching for books: "${query}"`);
+            const response = await this.client.post('/research', {
+                query,
+                max_results: maxResults,
+            });
+            logger.info(`Found ${response.data.count} books`);
+            return response.data;
+        }
+        catch (error) {
+            logger.error('Book search failed:', error.message);
+            throw new Error(`Book search failed: ${error.message}`);
+        }
+    }
+    async generateFromResearch(request) {
+        try {
+            logger.info(`Generating promo from research: "${request.book.title}" (level=${request.level})`);
+            const response = await this.client.post('/research/generate', request);
+            logger.info('Research generation successful');
+            return response.data;
+        }
+        catch (error) {
+            logger.error('Research generation failed:', error.message);
+            throw new Error(`Research generation failed: ${error.message}`);
+        }
+    }
+    async downloadResearchImage(imageUrl) {
+        try {
+            logger.info(`Downloading research image...`);
+            const response = await this.client.post('/research/download-image', null, { params: { image_url: imageUrl } });
+            logger.info(`Image saved: ${response.data.filepath}`);
+            return response.data.filepath;
+        }
+        catch (error) {
+            logger.error('Image download failed:', error.message);
+            return null;
+        }
+    }
+    async searchPreviewLinks(bookTitle, maxLinks = 2) {
+        try {
+            logger.info(`Searching preview links for: "${bookTitle}"`);
+            const response = await this.client.post('/research/search-links', null, { params: { book_title: bookTitle, max_links: maxLinks } });
+            logger.info(`Found ${response.data.count} valid preview links`);
+            return response.data.links;
+        }
+        catch (error) {
+            logger.error('Preview link search failed:', error.message);
+            throw new Error(`Preview link search failed: ${error.message}`);
+        }
+    }
 }
 exports.AIClient = AIClient;

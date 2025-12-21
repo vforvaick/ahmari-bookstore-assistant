@@ -61,6 +61,10 @@ class WhatsAppClient {
             logger: (0, pino_1.default)({ level: process.env.LOG_LEVEL || 'warn' }),
             browser: baileys.Browsers.macOS('Desktop'),
             version,
+            // Keep connection alive - ping every 25 seconds
+            keepAliveIntervalMs: 25000,
+            // Retry delay for failed requests
+            retryRequestDelayMs: 2000,
             getMessage: async (key) => {
                 // Retrieve message from store if needed
                 return { conversation: '' };
@@ -118,17 +122,20 @@ class WhatsAppClient {
         // Listen for messages
         this.sock.ev.on('messages.upsert', async ({ messages }) => {
             for (const message of messages) {
+                const remoteJid = message.key.remoteJid || '';
                 // Log incoming message for debugging
-                if (process.env.LOG_LEVEL === 'debug') {
-                    logger.debug({
-                        fromMe: message.key.fromMe,
-                        remoteJid: message.key.remoteJid,
-                        pushName: message.pushName
-                    }, 'Incoming message');
-                }
-                // ALWAYS ignore messages from self (fromMe = true)
-                // This prevents the bot from processing its own sent messages
+                logger.info({
+                    fromMe: message.key.fromMe,
+                    remoteJid: remoteJid,
+                    pushName: message.pushName
+                }, 'Incoming message event');
+                // Skip ALL messages from self (fromMe = true)
+                // This includes:
+                // 1. Bot's own sent messages (we don't want to process our own output)
+                // 2. Messages sent from another device linked to bot's number
+                // The owner should message the bot from a DIFFERENT number, not the bot's number
                 if (message.key.fromMe) {
+                    logger.debug(`Skipping fromMe message: ${remoteJid}`);
                     continue;
                 }
                 // Handle message

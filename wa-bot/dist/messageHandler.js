@@ -21,10 +21,16 @@ class MessageHandler {
         this.baileysPromise = baileysPromise;
         this.pendingState = null;
         this.bulkState = null;
+        this.researchState = null; // For /new command
+        this.scheduledQueue = [];
         this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
-        this.targetGroupJid = process.env.TARGET_GROUP_JID || null;
+        // Production group (default target)
+        this.targetGroupJid = process.env.TARGET_GROUP_JID || '120363420789401477@g.us';
+        // Dev/test group
+        this.devGroupJid = process.env.DEV_GROUP_JID || '120363335057034362@g.us';
         if (this.targetGroupJid) {
             logger.info(`Target group JID configured: ${this.targetGroupJid}`);
+            logger.info(`Dev group JID: ${this.devGroupJid}`);
         }
         else {
             logger.warn('TARGET_GROUP_JID not set - broadcast sending disabled');
@@ -64,6 +70,12 @@ class MessageHandler {
                 if (handled)
                     return;
             }
+            // Handle greeting - show help
+            const greetings = ['halo', 'hallo', 'hello', 'hi', 'hai', 'hey'];
+            if (greetings.includes(messageText.trim().toLowerCase())) {
+                await this.sendHelp(from);
+                return;
+            }
             // Check for pending state responses 
             if (this.pendingState) {
                 logger.info('Checking pending response...');
@@ -74,6 +86,12 @@ class MessageHandler {
             // Check for bulk state responses (YES/CANCEL/SCHEDULE)
             if (this.bulkState && this.bulkState.state === 'preview_pending') {
                 const handled = await this.handleBulkResponse(from, messageText);
+                if (handled)
+                    return;
+            }
+            // Check for research state responses (/new flow)
+            if (this.researchState) {
+                const handled = await this.handleResearchResponse(from, messageText);
                 if (handled)
                     return;
             }
@@ -131,6 +149,15 @@ class MessageHandler {
                 case '/done':
                     await this.finishBulkCollection(from);
                     return true;
+                case '/new':
+                    await this.startBookResearch(from, args);
+                    return true;
+                case '/queue':
+                    await this.sendQueueStatus(from);
+                    return true;
+                case '/flush':
+                    await this.flushQueue(from);
+                    return true;
                 default:
                     return false;
             }
@@ -149,7 +176,7 @@ class MessageHandler {
 /help - Tampilkan bantuan ini
 /status - Status bot dan konfigurasi
 /groups - List semua grup yang bot sudah join
-/setgroup <JID> - Set target grup untuk broadcast
+/setgroup <prod|dev> <JID> - Set target grup
 /setmarkup <angka> - Set markup harga (contoh: 20000)
 /getmarkup - Lihat markup harga saat ini
 /cancel - Batalkan pending draft
@@ -157,6 +184,11 @@ class MessageHandler {
 *Bulk Mode:*
 /bulk [1|2|3] - Mulai bulk mode (default level 2)
 /done - Selesai collect, mulai proses
+
+*Research Mode (Buat dari Nol):*
+/new <judul buku> - Cari buku di internet
+/queue - Lihat antrian broadcast terjadwal
+/flush - Kirim semua antrian SEKARANG (10-15 detik interval)
 
 *Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
@@ -169,13 +201,18 @@ class MessageHandler {
 3. Kirim /done untuk proses semua
 4. Preview akan muncul, reply YES/SCHEDULE X
 
+*Cara pakai (/new):*
+1. Kirim /new Encyclopedia Britannica Kids
+2. Pilih buku dengan reply angka
+3. Isi detail: 350000 hb jan 26 close 25 dec
+4. Review draft, reply YES untuk kirim
+
 *Tips:*
 - JID grup format: 120363XXXXX@g.us
 - Gunakan /groups untuk lihat JID`
         });
     }
     async sendStatus(from) {
-        const groupName = this.targetGroupJid || 'Not set';
         const hasPending = this.pendingState ? 'Yes' : 'No';
         // Get AI processor config
         let markupInfo = 'N/A';
@@ -186,14 +223,118 @@ class MessageHandler {
         catch {
             markupInfo = 'Error fetching';
         }
+        // Get group names
+        let prodGroupName = this.targetGroupJid || 'Not set';
+        let devGroupName = this.devGroupJid || 'Not set';
+        try {
+            const groups = await this.sock.groupFetchAllParticipating();
+            if (this.targetGroupJid && groups[this.targetGroupJid]) {
+                prodGroupName = `${groups[this.targetGroupJid].subject}\n   \`${this.targetGroupJid}\``;
+            }
+            if (this.devGroupJid && groups[this.devGroupJid]) {
+                devGroupName = `${groups[this.devGroupJid].subject}\n   \`${this.devGroupJid}\``;
+            }
+        }
+        catch {
+            // Keep JID only if can't fetch names
+        }
+        // Format owner JIDs
+        const ownerList = this.ownerJids.map((jid, i) => {
+            const num = jid.replace('@lid', '').replace('@s.whatsapp.net', '');
+            return `   ${i + 1}. ${num}`;
+        }).join('\n');
         await this.sock.sendMessage(from, {
             text: `📊 *Bot Status*
 
-🎯 Target Group: ${groupName}
+🚀 *Prod Group:*
+   ${prodGroupName}
+
+🛠️ *Dev Group:*
+   ${devGroupName}
+
 💰 Price Markup: ${markupInfo}
 📝 Pending Draft: ${hasPending}
 ⏰ Uptime: Running
-🔑 Owner JIDs: ${this.ownerJids.length} configured`
+
+🔑 *Owner JIDs (${this.ownerJids.length}):*
+${ownerList}`
+        });
+    }
+    async sendQueueStatus(from) {
+        // Clean up expired items
+        const now = new Date();
+        this.scheduledQueue = this.scheduledQueue.filter(item => item.scheduledTime > now);
+        if (this.scheduledQueue.length === 0) {
+            await this.sock.sendMessage(from, {
+                text: '📭 *Antrian Kosong*\n\nTidak ada broadcast terjadwal.'
+            });
+            return;
+        }
+        // Sort by scheduled time
+        const sorted = this.scheduledQueue.sort((a, b) => a.scheduledTime.getTime() - b.scheduledTime.getTime());
+        let queueMsg = `📋 *Antrian Broadcast* (${sorted.length} items)\n\n`;
+        for (let i = 0; i < sorted.length; i++) {
+            const item = sorted[i];
+            const minutesLeft = Math.round((item.scheduledTime.getTime() - now.getTime()) / 60000);
+            const timeStr = item.scheduledTime.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Jakarta'
+            });
+            const groupIcon = item.targetGroup === 'PRODUCTION' ? '🚀' : '🛠️';
+            queueMsg += `${i + 1}. ${item.title}\n`;
+            queueMsg += `   ⏰ ${timeStr} (${minutesLeft} menit lagi) ${groupIcon}\n\n`;
+        }
+        queueMsg += `⚠️ Jadwal hilang jika bot restart.`;
+        await this.sock.sendMessage(from, { text: queueMsg });
+    }
+    async flushQueue(from) {
+        if (this.scheduledQueue.length === 0) {
+            await this.sock.sendMessage(from, {
+                text: '📭 *Antrian Kosong*\n\nTidak ada broadcast untuk di-flush.'
+            });
+            return;
+        }
+        const itemsToSend = [...this.scheduledQueue];
+        // Cancel all scheduled timeouts
+        for (const item of itemsToSend) {
+            clearTimeout(item.timeoutId);
+        }
+        // Clear the queue
+        this.scheduledQueue = [];
+        await this.sock.sendMessage(from, {
+            text: `🚀 *FLUSH MODE*\n\nMengirim ${itemsToSend.length} broadcast sekarang dengan interval 10-15 detik...`
+        });
+        let sentCount = 0;
+        for (let i = 0; i < itemsToSend.length; i++) {
+            const item = itemsToSend[i];
+            try {
+                if (item.mediaPaths.length > 0 && fs_1.default.existsSync(item.mediaPaths[0])) {
+                    await this.sock.sendMessage(item.targetJid, {
+                        image: { url: item.mediaPaths[0] },
+                        caption: item.draft
+                    });
+                }
+                else {
+                    await this.sock.sendMessage(item.targetJid, {
+                        text: item.draft
+                    });
+                }
+                sentCount++;
+                const groupIcon = item.targetGroup === 'PRODUCTION' ? '🚀' : '🛠️';
+                logger.info(`Flush: sent "${item.title}" to ${item.targetGroup} ${groupIcon}`);
+                // Random delay 10-15 seconds (except last item)
+                if (i < itemsToSend.length - 1) {
+                    const delay = 10000 + Math.random() * 5000;
+                    await sleep(delay);
+                }
+            }
+            catch (error) {
+                logger.error(`Flush failed for "${item.title}":`, error);
+            }
+        }
+        await this.sock.sendMessage(from, {
+            text: `✅ *FLUSH COMPLETE*\n\n${sentCount}/${itemsToSend.length} broadcast terkirim!`
         });
     }
     async setMarkup(from, args) {
@@ -251,10 +392,20 @@ class MessageHandler {
             await this.sock.sendMessage(from, { text: `❌ Error fetching groups: ${error.message}` });
         }
     }
-    async setTargetGroup(from, jid) {
-        if (!jid || !jid.includes('@g.us')) {
+    async setTargetGroup(from, args) {
+        const parts = args.trim().split(/\s+/);
+        const target = parts[0]?.toLowerCase(); // prod or dev
+        const jid = parts[1]; // JID
+        // Show usage if invalid
+        if (!target || !['prod', 'dev'].includes(target) || !jid || !jid.includes('@g.us')) {
             await this.sock.sendMessage(from, {
-                text: `❌ Invalid JID. Format: 120363XXXXX@g.us\n\nGunakan /groups untuk lihat JID yang valid.`
+                text: `❌ *Format:* /setgroup <prod|dev> <JID>
+
+*Contoh:*
+/setgroup prod 120363420789401477@g.us
+/setgroup dev 120363335057034362@g.us
+
+Gunakan /groups untuk lihat JID yang valid.`
             });
             return;
         }
@@ -268,11 +419,20 @@ class MessageHandler {
                 });
                 return;
             }
-            this.targetGroupJid = jid;
-            await this.sock.sendMessage(from, {
-                text: `✅ Target grup diubah ke:\n*${group.subject}*\n\n⚠️ Ini hanya berlaku sampai restart. Untuk permanen, update TARGET_GROUP_JID di .env`
-            });
-            logger.info(`Target group changed to: ${jid} (${group.subject})`);
+            if (target === 'prod') {
+                this.targetGroupJid = jid;
+                await this.sock.sendMessage(from, {
+                    text: `✅ *PROD* grup diubah ke:\n*${group.subject}*\n\n⚠️ Berlaku sampai restart. Update TARGET_GROUP_JID di .env untuk permanen.`
+                });
+                logger.info(`PROD group changed to: ${jid} (${group.subject})`);
+            }
+            else {
+                this.devGroupJid = jid;
+                await this.sock.sendMessage(from, {
+                    text: `✅ *DEV* grup diubah ke:\n*${group.subject}*\n\n⚠️ Berlaku sampai restart. Update DEV_GROUP_JID di .env untuk permanen.`
+                });
+                logger.info(`DEV group changed to: ${jid} (${group.subject})`);
+            }
         }
         catch (error) {
             logger.error('Failed to set target group:', error);
@@ -319,7 +479,12 @@ class MessageHandler {
         }
         // STATE 2: Draft pending - waiting for YES/CANCEL
         if (this.pendingState.state === 'draft_pending') {
-            // Check for YES response
+            // Check for YES DEV response (send to dev group)
+            if (text === 'yes dev' || text === 'y dev') {
+                await this.sendBroadcast(from, this.devGroupJid || undefined);
+                return true;
+            }
+            // Check for YES response (send to production group)
             if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
                 await this.sendBroadcast(from);
                 return true;
@@ -368,12 +533,12 @@ class MessageHandler {
             if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
                 await this.sock.sendMessage(from, {
                     image: { url: mediaPaths[0] },
-                    caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+                    caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
                 });
             }
             else {
                 await this.sock.sendMessage(from, {
-                    text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup sekarang\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+                    text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
                 });
             }
         }
@@ -383,14 +548,17 @@ class MessageHandler {
             this.clearPendingState();
         }
     }
-    async sendBroadcast(from) {
+    async sendBroadcast(from, targetJid) {
         if (!this.pendingState || !this.pendingState.draft) {
             await this.sock.sendMessage(from, {
                 text: '❌ Tidak ada draft yang pending.'
             });
             return;
         }
-        if (!this.targetGroupJid) {
+        // Use provided targetJid or default to production group
+        const sendToJid = targetJid || this.targetGroupJid;
+        const isDevGroup = targetJid === this.devGroupJid;
+        if (!sendToJid) {
             await this.sock.sendMessage(from, {
                 text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
             });
@@ -405,26 +573,28 @@ class MessageHandler {
                 draftPreview: draft?.substring(0, 100) || 'EMPTY',
                 mediaPathsCount: mediaPaths?.length || 0,
                 mediaPaths: mediaPaths,
-                mediaExists: mediaPaths?.length > 0 ? fs_1.default.existsSync(mediaPaths[0]) : false
+                mediaExists: mediaPaths?.length > 0 ? fs_1.default.existsSync(mediaPaths[0]) : false,
+                targetGroup: isDevGroup ? 'DEV' : 'PRODUCTION'
             }, 'Sending broadcast to group');
             // Send to target group
             if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
                 logger.info('Sending with image...');
-                await this.sock.sendMessage(this.targetGroupJid, {
+                await this.sock.sendMessage(sendToJid, {
                     image: { url: mediaPaths[0] },
                     caption: draft || ''
                 });
             }
             else {
                 logger.info('Sending text only...');
-                await this.sock.sendMessage(this.targetGroupJid, {
+                await this.sock.sendMessage(sendToJid, {
                     text: draft || '(empty draft)'
                 });
             }
-            logger.info(`Broadcast sent to group: ${this.targetGroupJid}`);
-            // Confirm to owner
+            logger.info(`Broadcast sent to group: ${sendToJid}`);
+            // Confirm to owner with group type
+            const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
             await this.sock.sendMessage(from, {
-                text: `✅ Broadcast berhasil dikirim ke grup!`
+                text: `✅ Broadcast berhasil dikirim ke grup ${groupType}!`
             });
         }
         catch (error) {
@@ -743,8 +913,10 @@ Kirim /done kalau sudah selesai.
         }
         preview += `━━━━━━━━━━━━━━━━━━━━\n`;
         preview += `Reply:\n`;
-        preview += `• *YES* - Kirim semua sekarang (random 15-30 detik)\n`;
-        preview += `• *SCHEDULE 30* - Jadwalkan tiap 30 menit\n`;
+        preview += `• *YES* - Kirim ke PRODUCTION (random 15-30 detik)\n`;
+        preview += `• *YES DEV* - Kirim ke DEV\n`;
+        preview += `• *SCHEDULE 30* - Jadwalkan ke PRODUCTION tiap 30 menit\n`;
+        preview += `• *SCHEDULE DEV 30* - Jadwalkan ke DEV tiap 30 menit\n`;
         preview += `• *CANCEL* - Batalkan semua`;
         // Split message if too long (WhatsApp limit ~4000 chars)
         if (preview.length > 4000) {
@@ -762,12 +934,30 @@ Kirim /done kalau sudah selesai.
         if (!this.bulkState || this.bulkState.state !== 'preview_pending')
             return false;
         const normalizedText = text.toLowerCase().trim();
-        // YES - send immediately
+        // YES DEV - send to dev group
+        if (normalizedText === 'yes dev' || normalizedText === 'y dev') {
+            await this.sendBulkBroadcasts(from, this.devGroupJid || undefined);
+            return true;
+        }
+        // YES - send to production group
         if (normalizedText === 'yes' || normalizedText === 'y' || normalizedText === 'ya') {
             await this.sendBulkBroadcasts(from);
             return true;
         }
-        // SCHEDULE X
+        // SCHEDULE DEV X - schedule to dev group
+        if (normalizedText.startsWith('schedule dev')) {
+            const parts = normalizedText.split(/\s+/);
+            const minutes = parts[2] ? parseInt(parts[2]) : 30;
+            if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
+                await this.sock.sendMessage(from, {
+                    text: '❌ Interval tidak valid. Contoh: SCHEDULE DEV 30 (untuk 30 menit)'
+                });
+                return true;
+            }
+            await this.scheduleBulkBroadcasts(from, minutes, this.devGroupJid || undefined);
+            return true;
+        }
+        // SCHEDULE X - schedule to production group
         if (normalizedText.startsWith('schedule')) {
             const parts = normalizedText.split(/\s+/);
             const minutes = parts[1] ? parseInt(parts[1]) : 30;
@@ -788,9 +978,12 @@ Kirim /done kalau sudah selesai.
         }
         return false;
     }
-    async sendBulkBroadcasts(from) {
-        if (!this.bulkState || !this.targetGroupJid) {
-            if (!this.targetGroupJid) {
+    async sendBulkBroadcasts(from, targetJid) {
+        // Use provided targetJid or default to production group
+        const sendToJid = targetJid || this.targetGroupJid;
+        const isDevGroup = targetJid === this.devGroupJid;
+        if (!this.bulkState || !sendToJid) {
+            if (!sendToJid) {
                 await this.sock.sendMessage(from, {
                     text: '❌ TARGET_GROUP_JID belum di-set.'
                 });
@@ -800,8 +993,9 @@ Kirim /done kalau sudah selesai.
         }
         this.bulkState.state = 'sending';
         const successItems = this.bulkState.items.filter(item => item.generated && !item.generated.error);
+        const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
         await this.sock.sendMessage(from, {
-            text: `⏳ Mengirim ${successItems.length} broadcast ke grup...`
+            text: `⏳ Mengirim ${successItems.length} broadcast ke grup ${groupType}...`
         });
         let sentCount = 0;
         for (let i = 0; i < successItems.length; i++) {
@@ -809,18 +1003,18 @@ Kirim /done kalau sudah selesai.
             try {
                 // Send to group
                 if (item.mediaPaths.length > 0 && fs_1.default.existsSync(item.mediaPaths[0])) {
-                    await this.sock.sendMessage(this.targetGroupJid, {
+                    await this.sock.sendMessage(sendToJid, {
                         image: { url: item.mediaPaths[0] },
                         caption: item.generated?.draft || ''
                     });
                 }
                 else {
-                    await this.sock.sendMessage(this.targetGroupJid, {
+                    await this.sock.sendMessage(sendToJid, {
                         text: item.generated?.draft || ''
                     });
                 }
                 sentCount++;
-                logger.info(`Bulk broadcast ${i + 1}/${successItems.length} sent`);
+                logger.info(`Bulk broadcast ${i + 1}/${successItems.length} sent to ${isDevGroup ? 'DEV' : 'PROD'}`);
                 // Random delay 15-30 seconds (except last item)
                 if (i < successItems.length - 1) {
                     const delay = 15000 + Math.random() * 15000;
@@ -832,13 +1026,16 @@ Kirim /done kalau sudah selesai.
             }
         }
         await this.sock.sendMessage(from, {
-            text: `✅ ${sentCount}/${successItems.length} broadcast terkirim ke grup!`
+            text: `✅ ${sentCount}/${successItems.length} broadcast terkirim ke grup ${groupType}!`
         });
         this.clearBulkState();
     }
-    async scheduleBulkBroadcasts(from, intervalMinutes) {
-        if (!this.bulkState || !this.targetGroupJid) {
-            if (!this.targetGroupJid) {
+    async scheduleBulkBroadcasts(from, intervalMinutes, targetJid) {
+        // Use provided targetJid or default to production group
+        const sendToJid = targetJid || this.targetGroupJid;
+        const isDevGroup = targetJid === this.devGroupJid;
+        if (!this.bulkState || !sendToJid) {
+            if (!sendToJid) {
                 await this.sock.sendMessage(from, {
                     text: '❌ TARGET_GROUP_JID belum di-set.'
                 });
@@ -857,35 +1054,52 @@ Kirim /done kalau sudah selesai.
             // Capture in closure
             const capturedItem = item;
             const capturedIndex = i;
-            const targetJid = this.targetGroupJid;
+            const capturedJid = sendToJid; // Use sendToJid, not this.targetGroupJid
             const sock = this.sock;
-            setTimeout(async () => {
+            const itemTitle = item.parsedData?.title || 'Untitled';
+            const itemDraft = capturedItem.generated?.draft || '';
+            const itemMediaPaths = capturedItem.mediaPaths || [];
+            // Create timeout and store ID
+            const timeoutId = setTimeout(async () => {
                 try {
                     if (capturedItem.mediaPaths.length > 0 && fs_1.default.existsSync(capturedItem.mediaPaths[0])) {
-                        await sock.sendMessage(targetJid, {
+                        await sock.sendMessage(capturedJid, {
                             image: { url: capturedItem.mediaPaths[0] },
                             caption: capturedItem.generated?.draft || ''
                         });
                     }
                     else {
-                        await sock.sendMessage(targetJid, {
+                        await sock.sendMessage(capturedJid, {
                             text: capturedItem.generated?.draft || ''
                         });
                     }
-                    logger.info(`Scheduled broadcast ${capturedIndex + 1} sent`);
+                    logger.info(`Scheduled broadcast ${capturedIndex + 1} sent to ${isDevGroup ? 'DEV' : 'PROD'}`);
+                    // Remove from queue after sending
+                    this.scheduledQueue = this.scheduledQueue.filter(q => !(q.title === itemTitle && q.scheduledTime.getTime() === scheduledTime.getTime()));
                 }
                 catch (error) {
                     logger.error(`Failed to send scheduled broadcast ${capturedIndex + 1}:`, error);
                 }
             }, delayMs);
+            // Add to scheduled queue with all data for flush
+            this.scheduledQueue.push({
+                title: itemTitle,
+                scheduledTime: scheduledTime,
+                targetGroup: isDevGroup ? 'DEV' : 'PRODUCTION',
+                draft: itemDraft,
+                mediaPaths: itemMediaPaths,
+                targetJid: capturedJid,
+                timeoutId: timeoutId
+            });
             const timeStr = scheduledTime.toLocaleTimeString('id-ID', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
             schedules.push(`${i + 1}. ${item.parsedData?.title || 'Untitled'} - ${timeStr}`);
         }
+        const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
         await this.sock.sendMessage(from, {
-            text: `📅 *${successItems.length} broadcast dijadwalkan*\nInterval: ${intervalMinutes} menit\n\n${schedules.join('\n')}\n\n⚠️ Jadwal hilang jika bot restart.`
+            text: `📅 *${successItems.length} broadcast dijadwalkan ke grup ${groupType}*\nInterval: ${intervalMinutes} menit\n\n${schedules.join('\n')}\n\n⚠️ Jadwal hilang jika bot restart.`
         });
         // Clear bulk state but don't cleanup media yet (they'll be sent later)
         // We need to keep media paths accessible
@@ -912,6 +1126,362 @@ Kirim /done kalau sudah selesai.
                 }
             }
             this.bulkState = null;
+        }
+    }
+    // ==================== RESEARCH MODE METHODS (/new) ====================
+    async startBookResearch(from, query) {
+        if (!query.trim()) {
+            await this.sock.sendMessage(from, {
+                text: `❌ Penggunaan: /new <judul buku>\n\nContoh: /new Encyclopedia Britannica Kids`
+            });
+            return;
+        }
+        // Clear any existing states
+        this.clearPendingState();
+        this.clearBulkState();
+        this.clearResearchState();
+        try {
+            await this.sock.sendMessage(from, {
+                text: `🔍 Mencari: "${query}"...\n\nMohon tunggu...`
+            });
+            // Call AI Processor to search books
+            const searchResponse = await this.aiClient.searchBooks(query, 5);
+            if (searchResponse.count === 0) {
+                await this.sock.sendMessage(from, {
+                    text: `❌ Tidak ditemukan buku dengan kata kunci "${query}".\n\nCoba kata kunci lain ya!`
+                });
+                return;
+            }
+            // Store research state
+            this.researchState = {
+                state: 'selection_pending',
+                query,
+                results: searchResponse.results,
+                level: 2, // Default to level 2
+                timestamp: Date.now()
+            };
+            // Build results message
+            let resultsMsg = `📚 *Ditemukan ${searchResponse.count} buku:*\n\n`;
+            searchResponse.results.forEach((book, i) => {
+                const author = book.author ? ` - ${book.author}` : '';
+                const publisher = book.publisher ? ` (${book.publisher})` : '';
+                resultsMsg += `${i + 1}. *${book.title}*${author}${publisher}\n`;
+                if (book.snippet) {
+                    // Truncate snippet
+                    const shortSnippet = book.snippet.length > 100
+                        ? book.snippet.substring(0, 100) + '...'
+                        : book.snippet;
+                    resultsMsg += `   _${shortSnippet}_\n`;
+                }
+                resultsMsg += '\n';
+            });
+            resultsMsg += `---\nBalas dengan *angka* (1-${searchResponse.count}) untuk pilih buku.\nAtau kirim /cancel untuk batalkan.`;
+            await this.sock.sendMessage(from, { text: resultsMsg });
+            logger.info(`Book search results shown: ${searchResponse.count} books`);
+        }
+        catch (error) {
+            logger.error('Book search error:', error);
+            await this.sock.sendMessage(from, {
+                text: `❌ Gagal mencari buku: ${error.message}\n\nPastikan GOOGLE_SEARCH_API_KEY sudah dikonfigurasi.`
+            });
+            this.clearResearchState();
+        }
+    }
+    async handleResearchResponse(from, text) {
+        if (!this.researchState)
+            return false;
+        // Check if state is expired (10 minutes for research)
+        if (Date.now() - this.researchState.timestamp > 10 * 60 * 1000) {
+            logger.info('Research state expired');
+            this.clearResearchState();
+            return false;
+        }
+        // STATE 1: Waiting for book selection (number)
+        if (this.researchState.state === 'selection_pending') {
+            const num = parseInt(text.trim());
+            if (!isNaN(num) && num >= 1 && num <= (this.researchState.results?.length || 0)) {
+                const selectedBook = this.researchState.results[num - 1];
+                this.researchState.selectedBook = selectedBook;
+                this.researchState.state = 'details_pending';
+                this.researchState.timestamp = Date.now();
+                // Try to download image
+                if (selectedBook.image_url) {
+                    try {
+                        const imagePath = await this.aiClient.downloadResearchImage(selectedBook.image_url);
+                        if (imagePath) {
+                            this.researchState.imagePath = imagePath;
+                        }
+                    }
+                    catch (e) {
+                        logger.warn('Failed to download book image:', e);
+                    }
+                }
+                await this.sock.sendMessage(from, {
+                    text: `✅ Dipilih: *${selectedBook.title}*\n${selectedBook.publisher ? `Publisher: ${selectedBook.publisher}\n` : ''}\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
+                });
+                return true;
+            }
+            // Check for cancel
+            if (text.includes('cancel') || text.includes('batal')) {
+                await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+                this.clearResearchState();
+                return true;
+            }
+            // Invalid selection
+            await this.sock.sendMessage(from, {
+                text: `⚠️ Pilih angka 1-${this.researchState.results?.length}.\nAtau kirim /cancel untuk batal.`
+            });
+            return true;
+        }
+        // STATE 2: Waiting for details (price, format, eta, close)
+        if (this.researchState.state === 'details_pending') {
+            // Check for cancel
+            if (text.includes('cancel') || text.includes('batal')) {
+                await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+                this.clearResearchState();
+                return true;
+            }
+            // Parse details: "350000 hb jan 26 close 25 dec"
+            const details = this.parseResearchDetails(text);
+            if (!details || !details.price) {
+                await this.sock.sendMessage(from, {
+                    text: `⚠️ Format tidak valid.\n\nContoh: 350000 hb jan 26 close 25 dec\n\nMinimum: <harga> (angka)`
+                });
+                return true;
+            }
+            this.researchState.details = details;
+            // Ask for level
+            await this.sock.sendMessage(from, {
+                text: `✅ Detail tersimpan:\n💰 Harga: Rp ${details.price.toLocaleString('id-ID')}\n📦 Format: ${details.format || 'HB'}\n📅 ETA: ${details.eta || '-'}\n🔒 Close: ${details.closeDate || '-'}\n\n---\nPilih level rekomendasi:\n\n1️⃣ *Standard* - Informatif\n2️⃣ *Recommended* - Persuasif\n3️⃣ *Top Pick* ⭐ - Racun!\n\nBalas dengan angka *1*, *2*, atau *3*`
+            });
+            this.researchState.state = 'draft_pending';
+            this.researchState.timestamp = Date.now();
+            return true;
+        }
+        // STATE 3: Waiting for level selection, then generate
+        if (this.researchState.state === 'draft_pending' && !this.researchState.draft) {
+            // Check for level selection
+            if (['1', '2', '3'].includes(text.trim())) {
+                const level = parseInt(text.trim());
+                this.researchState.level = level;
+                await this.sock.sendMessage(from, {
+                    text: `⏳ Generating level ${level} draft...`
+                });
+                try {
+                    const generated = await this.aiClient.generateFromResearch({
+                        book: this.researchState.selectedBook,
+                        price_main: this.researchState.details.price,
+                        format: this.researchState.details.format || 'HB',
+                        eta: this.researchState.details.eta,
+                        close_date: this.researchState.details.closeDate,
+                        min_order: this.researchState.details.minOrder,
+                        level
+                    });
+                    this.researchState.draft = generated.draft;
+                    // Send draft with image if available
+                    const imagePath = this.researchState.imagePath;
+                    if (imagePath && fs_1.default.existsSync(imagePath)) {
+                        await this.sock.sendMessage(from, {
+                            image: { url: imagePath },
+                            caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+                        });
+                    }
+                    else {
+                        await this.sock.sendMessage(from, {
+                            text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+                        });
+                    }
+                    logger.info('Research draft generated');
+                    return true;
+                }
+                catch (error) {
+                    logger.error('Research generation error:', error);
+                    await this.sock.sendMessage(from, {
+                        text: `❌ Gagal generate draft: ${error.message}`
+                    });
+                    this.clearResearchState();
+                    return true;
+                }
+            }
+            // Check for cancel
+            if (text.includes('cancel') || text.includes('batal')) {
+                await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
+                this.clearResearchState();
+                return true;
+            }
+            await this.sock.sendMessage(from, {
+                text: '⚠️ Pilih level: 1, 2, atau 3'
+            });
+            return true;
+        }
+        // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL
+        if (this.researchState.state === 'draft_pending' && this.researchState.draft) {
+            // YES DEV - send to dev group
+            if (text === 'yes dev' || text === 'y dev') {
+                await this.sendResearchBroadcast(from, this.devGroupJid || undefined);
+                return true;
+            }
+            // YES - send to production group
+            if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
+                await this.sendResearchBroadcast(from);
+                return true;
+            }
+            // EDIT
+            if (text.includes('edit') || text.includes('ubah') || text.includes('ganti')) {
+                await this.sock.sendMessage(from, {
+                    text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
+                });
+                this.clearResearchState();
+                return true;
+            }
+            // LINKS - search for additional preview links
+            if (text.includes('link')) {
+                await this.sock.sendMessage(from, { text: '🔍 Mencari link preview tambahan...' });
+                try {
+                    const bookTitle = this.researchState.selectedBook?.title || '';
+                    const newLinks = await this.aiClient.searchPreviewLinks(bookTitle, 2);
+                    if (newLinks.length === 0) {
+                        await this.sock.sendMessage(from, { text: '❌ Tidak menemukan link preview valid.' });
+                        return true;
+                    }
+                    // Update draft with new links
+                    const linksSection = newLinks.map(l => `- ${l}`).join('\n');
+                    const updatedDraft = this.researchState.draft.replace(/Preview:\n[\s\S]*$/, `Preview:\n${linksSection}`);
+                    this.researchState.draft = updatedDraft;
+                    // Re-display updated draft
+                    const imagePath = this.researchState.imagePath;
+                    if (imagePath && fs_1.default.existsSync(imagePath)) {
+                        await this.sock.sendMessage(from, {
+                            image: { url: imagePath },
+                            caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+                        });
+                    }
+                    else {
+                        await this.sock.sendMessage(from, {
+                            text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+                        });
+                    }
+                    logger.info(`Updated draft with ${newLinks.length} new preview links`);
+                    return true;
+                }
+                catch (error) {
+                    logger.error('Link search error:', error);
+                    await this.sock.sendMessage(from, { text: `❌ Gagal cari link: ${error.message}` });
+                    return true;
+                }
+            }
+            // CANCEL
+            if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+                await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
+                this.clearResearchState();
+                return true;
+            }
+        }
+        return false;
+    }
+    parseResearchDetails(text) {
+        const parts = text.toLowerCase().split(/\s+/);
+        if (parts.length === 0)
+            return null;
+        // First part should be price
+        const price = parseInt(parts[0].replace(/[^\d]/g, ''));
+        if (isNaN(price) || price <= 0)
+            return null;
+        let format;
+        let eta;
+        let closeDate;
+        let minOrder;
+        // Look for format (hb, pb, bb)
+        const formatMatch = parts.find(p => ['hb', 'pb', 'bb'].includes(p));
+        if (formatMatch) {
+            format = formatMatch.toUpperCase();
+        }
+        // Look for "close" keyword and date after it
+        const closeIndex = parts.findIndex(p => p === 'close');
+        if (closeIndex !== -1 && closeIndex < parts.length - 1) {
+            // Join remaining parts as close date (e.g., "25 dec")
+            closeDate = parts.slice(closeIndex + 1, closeIndex + 3).join(' ');
+        }
+        // Look for month patterns for ETA (jan, feb, mar, etc.)
+        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        for (let i = 0; i < parts.length; i++) {
+            if (parts[i] !== 'close' && months.some(m => parts[i].includes(m))) {
+                // Found month, check if next part is year
+                const monthPart = parts[i];
+                const yearPart = parts[i + 1];
+                if (yearPart && /^\d{2,4}$/.test(yearPart)) {
+                    eta = `${monthPart.charAt(0).toUpperCase() + monthPart.slice(1)} '${yearPart.slice(-2)}`;
+                }
+                else {
+                    eta = monthPart.charAt(0).toUpperCase() + monthPart.slice(1);
+                }
+                break;
+            }
+        }
+        return { price, format: format || 'HB', eta, closeDate, minOrder };
+    }
+    async sendResearchBroadcast(from, targetJid) {
+        if (!this.researchState || !this.researchState.draft) {
+            await this.sock.sendMessage(from, {
+                text: '❌ Tidak ada draft yang pending.'
+            });
+            return;
+        }
+        // Use provided targetJid or default to production group
+        const sendToJid = targetJid || this.targetGroupJid;
+        const isDevGroup = targetJid === this.devGroupJid;
+        if (!sendToJid) {
+            await this.sock.sendMessage(from, {
+                text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
+            });
+            this.clearResearchState();
+            return;
+        }
+        try {
+            const { draft, imagePath } = this.researchState;
+            // Send to target group
+            if (imagePath && fs_1.default.existsSync(imagePath)) {
+                await this.sock.sendMessage(sendToJid, {
+                    image: { url: imagePath },
+                    caption: draft || ''
+                });
+            }
+            else {
+                await this.sock.sendMessage(sendToJid, {
+                    text: draft || '(empty draft)'
+                });
+            }
+            logger.info(`Research broadcast sent to group: ${sendToJid} (${isDevGroup ? 'DEV' : 'PROD'})`);
+            const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
+            await this.sock.sendMessage(from, {
+                text: `✅ Broadcast berhasil dikirim ke grup ${groupType}!`
+            });
+        }
+        catch (error) {
+            logger.error('Failed to send research broadcast:', error);
+            await this.sock.sendMessage(from, {
+                text: `❌ Gagal kirim broadcast: ${error.message}`
+            });
+        }
+        finally {
+            this.clearResearchState();
+        }
+    }
+    clearResearchState() {
+        if (this.researchState) {
+            // Cleanup image if exists
+            if (this.researchState.imagePath) {
+                try {
+                    if (fs_1.default.existsSync(this.researchState.imagePath)) {
+                        fs_1.default.unlinkSync(this.researchState.imagePath);
+                        logger.debug(`Cleaned up research image: ${this.researchState.imagePath}`);
+                    }
+                }
+                catch (error) {
+                    logger.error(`Failed to cleanup research image:`, error);
+                }
+            }
+            this.researchState = null;
         }
     }
 }

@@ -141,6 +141,13 @@ export class MessageHandler {
         if (handled) return;
       }
 
+      // Handle greeting - show help
+      const greetings = ['halo', 'hallo', 'hello', 'hi', 'hai', 'hey'];
+      if (greetings.includes(messageText.trim().toLowerCase())) {
+        await this.sendHelp(from);
+        return;
+      }
+
       // Check for pending state responses 
       if (this.pendingState) {
         logger.info('Checking pending response...');
@@ -254,7 +261,7 @@ export class MessageHandler {
 /help - Tampilkan bantuan ini
 /status - Status bot dan konfigurasi
 /groups - List semua grup yang bot sudah join
-/setgroup <JID> - Set target grup untuk broadcast
+/setgroup <prod|dev> <JID> - Set target grup
 /setmarkup <angka> - Set markup harga (contoh: 20000)
 /getmarkup - Lihat markup harga saat ini
 /cancel - Batalkan pending draft
@@ -292,7 +299,6 @@ export class MessageHandler {
   }
 
   private async sendStatus(from: string) {
-    const groupName = this.targetGroupJid || 'Not set';
     const hasPending = this.pendingState ? 'Yes' : 'No';
 
     // Get AI processor config
@@ -304,14 +310,42 @@ export class MessageHandler {
       markupInfo = 'Error fetching';
     }
 
+    // Get group names
+    let prodGroupName = this.targetGroupJid || 'Not set';
+    let devGroupName = this.devGroupJid || 'Not set';
+    try {
+      const groups = await this.sock.groupFetchAllParticipating();
+      if (this.targetGroupJid && groups[this.targetGroupJid]) {
+        prodGroupName = `${groups[this.targetGroupJid].subject}\n   \`${this.targetGroupJid}\``;
+      }
+      if (this.devGroupJid && groups[this.devGroupJid]) {
+        devGroupName = `${groups[this.devGroupJid].subject}\n   \`${this.devGroupJid}\``;
+      }
+    } catch {
+      // Keep JID only if can't fetch names
+    }
+
+    // Format owner JIDs
+    const ownerList = this.ownerJids.map((jid, i) => {
+      const num = jid.replace('@lid', '').replace('@s.whatsapp.net', '');
+      return `   ${i + 1}. ${num}`;
+    }).join('\n');
+
     await this.sock.sendMessage(from, {
       text: `📊 *Bot Status*
 
-🎯 Target Group: ${groupName}
+🚀 *Prod Group:*
+   ${prodGroupName}
+
+🛠️ *Dev Group:*
+   ${devGroupName}
+
 💰 Price Markup: ${markupInfo}
 📝 Pending Draft: ${hasPending}
 ⏰ Uptime: Running
-🔑 Owner JIDs: ${this.ownerJids.length} configured`
+
+🔑 *Owner JIDs (${this.ownerJids.length}):*
+${ownerList}`
     });
   }
 
@@ -470,10 +504,21 @@ export class MessageHandler {
     }
   }
 
-  private async setTargetGroup(from: string, jid: string) {
-    if (!jid || !jid.includes('@g.us')) {
+  private async setTargetGroup(from: string, args: string) {
+    const parts = args.trim().split(/\s+/);
+    const target = parts[0]?.toLowerCase(); // prod or dev
+    const jid = parts[1]; // JID
+
+    // Show usage if invalid
+    if (!target || !['prod', 'dev'].includes(target) || !jid || !jid.includes('@g.us')) {
       await this.sock.sendMessage(from, {
-        text: `❌ Invalid JID. Format: 120363XXXXX@g.us\n\nGunakan /groups untuk lihat JID yang valid.`
+        text: `❌ *Format:* /setgroup <prod|dev> <JID>
+
+*Contoh:*
+/setgroup prod 120363420789401477@g.us
+/setgroup dev 120363335057034362@g.us
+
+Gunakan /groups untuk lihat JID yang valid.`
       });
       return;
     }
@@ -490,12 +535,19 @@ export class MessageHandler {
         return;
       }
 
-      this.targetGroupJid = jid;
-      await this.sock.sendMessage(from, {
-        text: `✅ Target grup diubah ke:\n*${group.subject}*\n\n⚠️ Ini hanya berlaku sampai restart. Untuk permanen, update TARGET_GROUP_JID di .env`
-      });
-
-      logger.info(`Target group changed to: ${jid} (${group.subject})`);
+      if (target === 'prod') {
+        this.targetGroupJid = jid;
+        await this.sock.sendMessage(from, {
+          text: `✅ *PROD* grup diubah ke:\n*${group.subject}*\n\n⚠️ Berlaku sampai restart. Update TARGET_GROUP_JID di .env untuk permanen.`
+        });
+        logger.info(`PROD group changed to: ${jid} (${group.subject})`);
+      } else {
+        this.devGroupJid = jid;
+        await this.sock.sendMessage(from, {
+          text: `✅ *DEV* grup diubah ke:\n*${group.subject}*\n\n⚠️ Berlaku sampai restart. Update DEV_GROUP_JID di .env untuk permanen.`
+        });
+        logger.info(`DEV group changed to: ${jid} (${group.subject})`);
+      }
     } catch (error: any) {
       logger.error('Failed to set target group:', error);
       await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
