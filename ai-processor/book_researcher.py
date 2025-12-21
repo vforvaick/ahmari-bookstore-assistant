@@ -56,10 +56,24 @@ class BookResearcher:
             logger.warning("GOOGLE_SEARCH_CX not set - book research will fail")
     
     def _clean_title(self, raw_title: str) -> str:
-        """Extract clean book title from search result title."""
-        # Remove common suffixes in order of priority
-        patterns = [
-            # Site names
+        """Extract clean book title from search result title.
+        
+        Handles formats like:
+        - "Alley Cat Rally: Trickartt, Ricky" -> "Alley Cat Rally"
+        - "Alley Cat Rally – Ricky Trickartt – The Klaus Flugge Prize" -> "Alley Cat Rally"
+        - "Alley Cat Rally by Ricky Trickartt" -> "Alley Cat Rally"
+        - "Ricky Trickartt on Alley Cat Rally" -> "Alley Cat Rally" (interview)
+        """
+        title = raw_title.strip()
+        
+        # Step 1: Handle "Author on Title" format (interview)
+        on_match = re.match(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+on\s+(.+)$', title)
+        if on_match:
+            # Swap to get title after "on"
+            title = on_match.group(2)
+        
+        # Step 2: Remove site name suffixes first
+        site_patterns = [
             r'\s*[-|–]\s*Amazon\.com.*$',
             r'\s*[-|–]\s*Amazon\.co\.uk.*$',
             r'\s*[-|–]\s*Goodreads.*$',
@@ -67,35 +81,47 @@ class BookResearcher:
             r'\s*[-|–]\s*Google Books.*$',
             r'\s*[-|–]\s*Waterstones.*$',
             r'\s*[-|–]\s*Book Depository.*$',
-            r'\s*[-|–]\s*Booktopia.*$',
-            r'\s*[-|–]\s*Wordery.*$',
-            r'\s*[-|–]\s*Blackwell.*$',
-            # Prize/Award suffixes
             r'\s*[-|–]\s*The\s+\w+\s+Prize.*$',
             r'\s*[-|–]\s*\w+\s+Prize.*$',
             r'\s*\|\s*Official.*$',
-            # Author patterns (after dash/em-dash)
-            r'\s*[-|–]\s*[A-Z][a-z]+\s+[A-Z][a-z]+\s*$',
-            r'\s*[-|–]\s*[A-Z][a-z]+\s+[A-Z][a-z]+\s+[A-Z][a-z]+\s*$',
-            # ISBN/Year
-            r'\s*:\s*\d{10,13}.*$',
-            r'\s*\(\d{4}\)$',
-            # Publisher site patterns  
-            r'\s*[-|–]\s*Flying Eye Books.*$',
-            r'\s*[-|–]\s*Wide Eyed Editions.*$',
-            r'\s*[-|–]\s*Big Picture Press.*$',
-            r'\s*[-|–]\s*Templar.*$',
-            r'\s*[-|–]\s*Nosy Crow.*$',
-            r'\s*[-|–]\s*Walker Books.*$',
-            r'\s*[-|–]\s*Bloomsbury.*$',
         ]
-        
-        title = raw_title
-        for pattern in patterns:
+        for pattern in site_patterns:
             title = re.sub(pattern, '', title, flags=re.IGNORECASE)
         
-        # Remove trailing punctuation
-        title = re.sub(r'[\s:|-]+$', '', title)
+        # Step 3: Extract first segment (before author/source separators)
+        # Split on common separators: colon, em-dash, pipe, "by"
+        # But be careful: some titles have colons (e.g., "Look Inside: Space")
+        
+        # Try to find "Author: Last, First" pattern and remove it
+        author_colon = re.match(r'^(.+?):\s*([A-Z][a-z]+),\s*([A-Z][a-z]+)', title)
+        if author_colon:
+            title = author_colon.group(1)
+        
+        # Try "by Author" pattern
+        by_match = re.match(r'^(.+?)\s+by\s+[A-Z]', title, re.IGNORECASE)
+        if by_match:
+            title = by_match.group(1)
+        
+        # Handle multiple dashes: take first segment if it looks like a title
+        # "Alley Cat Rally – Ricky Trickartt – Prize" -> "Alley Cat Rally"
+        dash_parts = re.split(r'\s*[-–|]\s*', title)
+        if len(dash_parts) > 1:
+            # Check if first part looks like a title (not author name)
+            first = dash_parts[0].strip()
+            # If first part is 2+ words and not "Firstname Lastname" pattern
+            words = first.split()
+            if len(words) >= 2:
+                # Check if it's NOT just a "Firstname Lastname" 
+                is_author_name = (
+                    len(words) == 2 and 
+                    all(w[0].isupper() and w[1:].islower() for w in words if w)
+                )
+                if not is_author_name:
+                    title = first
+        
+        # Step 4: Final cleanup
+        title = re.sub(r'[\s:|-]+$', '', title)  # trailing punctuation
+        title = re.sub(r'^\s*[:\-–|]\s*', '', title)  # leading punctuation
         
         return title.strip()
     
