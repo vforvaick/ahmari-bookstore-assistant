@@ -1629,11 +1629,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - ganti cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - pilih cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - pilih cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
             });
           }
 
@@ -1693,11 +1693,11 @@ Kirim /done kalau sudah selesai.
         if (imagePath && fs.existsSync(imagePath)) {
           await this.sock.sendMessage(from, {
             image: { url: imagePath },
-            caption: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - ganti cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+            caption: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
           });
         } else {
           await this.sock.sendMessage(from, {
-            text: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - pilih cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+            text: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - pilih cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
           });
         }
         return true;
@@ -1717,22 +1717,70 @@ Kirim /done kalau sudah selesai.
       return true;
     }
 
-    // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL
+    // STATE 4: Draft generated, waiting for YES/EDIT/CANCEL/etc.
     if (this.researchState.state === 'draft_pending' && this.researchState.draft) {
-      // YES DEV - send to dev group
-      if (text === 'yes dev' || text === 'y dev') {
-        await this.sendResearchBroadcast(from, this.devGroupJid || undefined);
-        return true;
-      }
+      // Map number selection to commands: 1=YES, 2=YES DEV, 3=COVER, 4=LINKS, 5=REGEN, 6=EDIT, 7=CANCEL
+      const numMap: { [key: string]: string } = { '1': 'yes', '2': 'yes dev', '3': 'cover', '4': 'links', '5': 'regen', '6': 'edit', '7': 'cancel' };
+      const mappedText = numMap[text.trim()] || text;
 
-      // YES - send to production group
-      if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
+      // 1. YES - send to production group
+      if (mappedText === 'yes' || mappedText === 'y' || mappedText === 'ya' || mappedText === 'iya') {
         await this.sendResearchBroadcast(from);
         return true;
       }
 
-      // EDIT
-      if (text.includes('edit') || text.includes('ubah') || text.includes('ganti')) {
+      // 2. YES DEV - send to dev group
+      if (mappedText === 'yes dev' || mappedText === 'y dev') {
+        await this.sendResearchBroadcast(from, this.devGroupJid || undefined);
+        return true;
+      }
+
+      // 5. REGEN - regenerate description with same level
+      if (mappedText === 'regen' || mappedText.includes('regen') || mappedText.includes('ulang')) {
+        await this.sock.sendMessage(from, { text: '🔄 Regenerating description...' });
+
+        try {
+          const enrichedBook = {
+            ...this.researchState.selectedBook!,
+            title: this.researchState.displayTitle || this.researchState.selectedBook!.title,
+            description: this.researchState.enrichedDescription || this.researchState.selectedBook!.description
+          };
+
+          const generated = await this.aiClient.generateFromResearch({
+            book: enrichedBook,
+            price_main: this.researchState.details!.price,
+            format: this.researchState.details!.format || 'HB',
+            eta: this.researchState.details!.eta,
+            close_date: this.researchState.details!.closeDate,
+            min_order: this.researchState.details!.minOrder,
+            level: this.researchState.level || 2
+          });
+
+          this.researchState.draft = generated.draft;
+
+          // Re-display with new draft
+          const imagePath = this.researchState.imagePath;
+          const optionsText = `---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`;
+
+          if (imagePath && fs.existsSync(imagePath)) {
+            await this.sock.sendMessage(from, {
+              image: { url: imagePath },
+              caption: `📝 *DRAFT BROADCAST (Regenerated)*\n\n${generated.draft}\n\n${optionsText}`
+            });
+          } else {
+            await this.sock.sendMessage(from, {
+              text: `📝 *DRAFT BROADCAST (Regenerated)*\n\n${generated.draft}\n\n${optionsText}`
+            });
+          }
+          return true;
+        } catch (error: any) {
+          await this.sock.sendMessage(from, { text: `❌ Gagal regenerate: ${error.message}` });
+          return true;
+        }
+      }
+
+      // 6. EDIT
+      if (mappedText === 'edit' || mappedText.includes('ubah')) {
         await this.sock.sendMessage(from, {
           text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
         });
@@ -1740,8 +1788,8 @@ Kirim /done kalau sudah selesai.
         return true;
       }
 
-      // COVER - search for new cover images
-      if (text.includes('cover')) {
+      // 3. COVER - search for new cover images
+      if (mappedText === 'cover' || mappedText.includes('cover')) {
         await this.sock.sendMessage(from, { text: '🔍 Mencari cover image...' });
 
         try {
@@ -1775,8 +1823,8 @@ Kirim /done kalau sudah selesai.
         }
       }
 
-      // LINKS - search for additional preview links
-      if (text.includes('link')) {
+      // 4. LINKS - search for additional preview links
+      if (mappedText === 'links' || mappedText.includes('link')) {
         await this.sock.sendMessage(from, { text: '🔍 Mencari link preview tambahan...' });
 
         try {
@@ -1801,11 +1849,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - ganti cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - pilih cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - pilih cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
             });
           }
 
@@ -1819,8 +1867,8 @@ Kirim /done kalau sudah selesai.
         }
       }
 
-      // CANCEL
-      if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+      // 7. CANCEL
+      if (mappedText === 'cancel' || mappedText.includes('batal') || mappedText.includes('skip')) {
         await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
         this.clearResearchState();
         return true;
