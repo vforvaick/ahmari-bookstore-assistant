@@ -1801,11 +1801,11 @@ Kirim /done kalau sudah selesai.
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - ganti cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *COVER* - pilih cover image\n• *LINKS* - cari link preview lain\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`
             });
           }
 
