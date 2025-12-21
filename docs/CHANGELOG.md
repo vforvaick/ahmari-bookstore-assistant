@@ -9,6 +9,26 @@ All notable changes to this project will be documented in this file.
 - Documentation for VPS deployment.
 - Persist scheduled broadcasts to database (currently in-memory only).
 
+## [1.8.0] - 2025-12-21
+
+### Added
+- **Enhanced Research Mode (`/new` command):**
+  - **Clean Display Titles:** Titles now formatted as "Book Title | Publisher: X" with 20+ patterns to strip site/author/prize suffixes.
+  - **Cover Image Selection:** After selecting a book, user can choose from 5 cover images found via Google Image Search, or send their own.
+  - **Enriched Description:** AI now receives description aggregated from 3 search sources for better, more detailed reviews.
+  - **Publisher Detection:** Automatic publisher extraction from 18 known publisher domains.
+
+### Changed
+- Research flow now has additional state (`image_selection_pending`) for cover selection.
+- AI Processor has 4 new endpoints: `/research/search-images`, `/research/enrich`, `/research/display-title`, enhanced `/research` endpoint.
+
+### Technical
+- `book_researcher.py`: Added `search_images()`, `enrich_description()`, `get_display_title()`, `_extract_publisher_from_url()`.
+- `aiClient.ts`: Added corresponding client methods.
+- `messageHandler.ts`: Updated with new ResearchState fields and flow logic.
+
+
+
 ## [1.7.0] - 2025-12-20
 
 ### Added
