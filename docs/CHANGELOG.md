@@ -5,10 +5,24 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Caption Generator (`/caption` command)**: Generate promotional text from poster/cover images
+  - AI-powered image analysis using Gemini Vision
+  - Auto-detects series (multiple books) vs single book cover
+  - Extracts series name, publisher, book titles, description
+  - Supports 3-tier recommendation levels (1=Standard, 2=Recommended, 3=Top Pick)
+  - Full flow: `/caption` → send image → confirm details → level → draft → YES/EDIT
+
 - VPS optimization scripts (`scripts/vps-setup.sh`, `scripts/health-check.sh`)
 - Memory limits for Docker containers (1GB total: 400M + 350M + 128M + 128M)
 - Auto-restart cron (daily 4 AM WIB) and cleanup (weekly Sunday)
 - 2GB swap file setup for low-memory VPS
+
+### Technical
+- New `caption_analyzer.py` module with Gemini Vision integration
+- New Pydantic models: `CaptionAnalysisResult`, `CaptionGenerateRequest`, `CaptionGenerateResponse`
+- New API endpoints: `POST /caption/analyze`, `POST /caption/generate`
+- New aiClient methods: `analyzeCaption()`, `generateCaption()`
+- New `CaptionState` interface in messageHandler.ts
 
 ### Pending
 - Unit tests for AI processor.

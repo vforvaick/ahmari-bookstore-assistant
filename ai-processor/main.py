@@ -13,13 +13,17 @@ from output_formatter import OutputFormatter
 from book_researcher import BookResearcher
 from models import (
     ParsedBroadcast, GenerateRequest, GenerateResponse,
-    BookSearchRequest, BookSearchResult, BookSearchResponse, ResearchGenerateRequest
+    BookSearchRequest, BookSearchResult, BookSearchResponse, ResearchGenerateRequest,
+    CaptionAnalysisResult, CaptionGenerateRequest, CaptionGenerateResponse
 )
 
 # Poster module imports
 from poster import PosterGenerator, get_dimensions, get_background_options
 from poster.presets import get_preset_options
 from poster.api_models import PosterGenerateRequest, PosterOptionsResponse, PosterGenerateResponse
+
+# Caption analyzer import
+from caption_analyzer import CaptionAnalyzer
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +53,7 @@ gemini_client = GeminiClient()  # Reads API keys from environment
 formatter = OutputFormatter(price_markup=settings.price_markup)
 book_researcher = BookResearcher()  # For /research endpoint
 poster_generator = PosterGenerator()  # For /poster endpoints
+caption_analyzer = CaptionAnalyzer()  # For /caption endpoints
 
 class ParseRequest(BaseModel):
     text: str
@@ -466,6 +471,159 @@ async def get_display_title(title: str, source_url: str, publisher: str = None):
         "status": "success",
         "display_title": display_title
     }
+
+
+# ==================== CAPTION GENERATOR ENDPOINTS ====================
+
+@app.post("/caption/analyze", response_model=CaptionAnalysisResult)
+async def analyze_image_for_caption(file: UploadFile = File(...)):
+    """
+    Analyze poster or cover image to extract book information.
+    
+    Detects whether input is:
+    - A series poster (multiple books) → returns is_series=True, series_name, book_titles
+    - A single book cover → returns is_series=False, title, author
+    
+    Args:
+        file: Image file (JPEG, PNG, etc.)
+        
+    Returns:
+        CaptionAnalysisResult with detected book information
+    """
+    import traceback
+    from pathlib import Path
+    import uuid
+    
+    try:
+        logger.info(f"Analyzing image for caption: {file.filename}")
+        
+        # Save uploaded file temporarily
+        temp_dir = Path("/tmp/caption_uploads")
+        temp_dir.mkdir(exist_ok=True)
+        
+        temp_path = temp_dir / f"{uuid.uuid4().hex}_{file.filename}"
+        
+        content = await file.read()
+        with open(temp_path, "wb") as f:
+            f.write(content)
+        
+        # Analyze with CaptionAnalyzer
+        result = await caption_analyzer.analyze(temp_path)
+        
+        # Clean up temp file
+        try:
+            temp_path.unlink()
+        except:
+            pass
+        
+        if result.error:
+            raise HTTPException(status_code=500, detail=result.error)
+        
+        logger.info(f"Caption analysis complete: is_series={result.is_series}, titles={len(result.book_titles)}")
+        
+        return CaptionAnalysisResult(
+            is_series=result.is_series,
+            series_name=result.series_name,
+            publisher=result.publisher,
+            book_titles=result.book_titles,
+            description=result.description,
+            title=result.title,
+            author=result.author,
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Caption analysis error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Image analysis failed: {e}"
+        )
+
+
+@app.post("/caption/generate", response_model=CaptionGenerateResponse)
+async def generate_caption(request: CaptionGenerateRequest):
+    """
+    Generate promotional text from analyzed image data.
+    
+    Takes CaptionAnalysisResult (from /caption/analyze) plus user-provided
+    details (price, format, ETA) and generates promotional text.
+    
+    For series: Generates series-style promo with all book titles
+    For single: Generates single-book promo
+    """
+    import traceback
+    
+    try:
+        analysis = request.analysis
+        is_series = analysis.is_series
+        
+        logger.info(f"Generating caption: series={is_series}, level={request.level}")
+        
+        # Determine title for AI
+        if is_series:
+            title = analysis.series_name or "Book Series"
+            description = analysis.description
+        else:
+            title = analysis.title or analysis.book_titles[0] if analysis.book_titles else "Book"
+            description = analysis.description
+        
+        # Create ParsedBroadcast-like structure for AI
+        parsed_for_ai = ParsedBroadcast(
+            title=title,
+            publisher=analysis.publisher,
+            description_en=description,
+            format=request.format,
+            price_main=request.price,
+            eta=request.eta,
+            close_date=request.close_date,
+            raw_text=f"Caption from image: {title}"
+        )
+        
+        # Generate AI review
+        ai_response = await gemini_client.generate_review(
+            parsed_for_ai,
+            level=request.level
+        )
+        
+        # Format final caption
+        draft = formatter.format_broadcast(
+            parsed_for_ai,
+            ai_response.review,
+            publisher_override=analysis.publisher or ai_response.publisher_guess,
+            level=request.level
+        )
+        
+        # For series, prepend "Random PO" and add book list at end
+        if is_series and analysis.book_titles:
+            # Insert series info after first line
+            lines = draft.split('\n')
+            
+            # Build books list
+            books_section = "\n*Judul tersedia:*"
+            for book_title in analysis.book_titles[:15]:  # Max 15 titles
+                books_section += f"\n- {book_title}"
+            
+            # Add to end before preview links (if any)
+            draft = draft + "\n" + books_section
+        
+        logger.info(f"Caption generated successfully, length: {len(draft)}")
+        
+        return CaptionGenerateResponse(
+            draft=draft,
+            analysis=analysis
+        )
+        
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"Caption generation error: {e}")
+        logger.error(f"Traceback:\n{tb}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Caption generation failed: {e}"
+        )
 
 
 # ==================== POSTER GENERATOR ENDPOINTS ====================

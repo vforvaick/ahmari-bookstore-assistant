@@ -79,6 +79,34 @@ export interface PosterOptions {
   }>;
 }
 
+// ============== Caption Generator Interfaces ==============
+
+export interface CaptionAnalysisResult {
+  is_series: boolean;
+  series_name?: string;
+  publisher?: string;
+  book_titles: string[];
+  description: string;
+  title?: string;
+  author?: string;
+  error?: string;
+}
+
+export interface CaptionGenerateRequest {
+  analysis: CaptionAnalysisResult;
+  price: number;
+  format: string;
+  eta?: string;
+  close_date?: string;
+  level: number;
+  preview_links?: Array<{ title: string; url: string }>;
+}
+
+export interface CaptionGenerateResponse {
+  draft: string;
+  analysis: CaptionAnalysisResult;
+}
+
 export class AIClient {
   private client: AxiosInstance;
 
@@ -372,6 +400,47 @@ export class AIClient {
     } catch (error: any) {
       logger.error('Poster generation failed:', error.message);
       throw new Error(`Poster generation failed: ${error.message}`);
+    }
+  }
+
+  // ============== Caption Generator Methods ==============
+
+  async analyzeCaption(imagePath: string): Promise<CaptionAnalysisResult> {
+    try {
+      logger.info(`Analyzing image for caption: ${imagePath}`);
+
+      const FormData = require('form-data');
+      const fs = require('fs');
+      const formData = new FormData();
+
+      formData.append('file', fs.createReadStream(imagePath));
+
+      const response = await this.client.post<CaptionAnalysisResult>(
+        '/caption/analyze',
+        formData,
+        {
+          headers: formData.getHeaders(),
+          timeout: 60000, // 60 seconds for AI analysis
+        }
+      );
+
+      logger.info(`Caption analysis complete: series=${response.data.is_series}, titles=${response.data.book_titles?.length || 0}`);
+      return response.data;
+    } catch (error: any) {
+      logger.error('Caption analysis failed:', error.message);
+      throw new Error(`Caption analysis failed: ${error.message}`);
+    }
+  }
+
+  async generateCaption(request: CaptionGenerateRequest): Promise<CaptionGenerateResponse> {
+    try {
+      logger.info(`Generating caption: series=${request.analysis.is_series}, level=${request.level}`);
+      const response = await this.client.post<CaptionGenerateResponse>('/caption/generate', request);
+      logger.info('Caption generation successful');
+      return response.data;
+    } catch (error: any) {
+      logger.error('Caption generation failed:', error.message);
+      throw new Error(`Caption generation failed: ${error.message}`);
     }
   }
 }

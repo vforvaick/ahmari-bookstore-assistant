@@ -70,3 +70,35 @@ class ResearchGenerateRequest(BaseModel):
     custom_image_path: Optional[str] = None  # If user sends own image
     user_edit: Optional[str] = None     # User feedback for regeneration
     userEdit: Optional[str] = None      # Alias for camelCase from TypeScript
+
+
+# ============== Caption Generator Models ==============
+
+class CaptionAnalysisResult(BaseModel):
+    """Result of analyzing an image for caption generation"""
+    is_series: bool = False             # True if multiple books detected
+    series_name: Optional[str] = None   # "Baby University" for series
+    publisher: Optional[str] = None     # "Sourcebook Explore"
+    book_titles: List[str] = Field(default_factory=list)  # All detected titles
+    description: str = ""               # AI-generated description
+    title: Optional[str] = None         # For single book: main title
+    author: Optional[str] = None        # For single book: author if detected
+    error: Optional[str] = None
+
+
+class CaptionGenerateRequest(BaseModel):
+    """Request to generate caption/promo text from analyzed image"""
+    analysis: CaptionAnalysisResult     # From /caption/analyze
+    price: int                          # Price in Rupiah (without markup)
+    format: str = "HB"                  # HB/PB/BB
+    eta: Optional[str] = None           # e.g., "April'26"
+    close_date: Optional[str] = None    # e.g., "20 Desember'25"
+    level: int = 2                      # Recommendation level 1/2/3
+    preview_links: List[dict] = Field(default_factory=list)  # Optional links per book
+
+
+class CaptionGenerateResponse(BaseModel):
+    """Generated caption/promo text"""
+    draft: str
+    analysis: CaptionAnalysisResult
+

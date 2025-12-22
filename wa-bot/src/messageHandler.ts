@@ -1,6 +1,6 @@
 import pino from 'pino';
 import { detectFGBBroadcast, DetectionResult } from './detector';
-import { AIClient, GenerateResponse, BookSearchResult, BookSearchResponse } from './aiClient';
+import { AIClient, GenerateResponse, BookSearchResult, BookSearchResponse, CaptionAnalysisResult, CaptionGenerateRequest } from './aiClient';
 import path from 'path';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -75,6 +75,22 @@ interface PosterState {
   timestamp: number;
 }
 
+// Caption state for /caption command (generate promo text from image)
+interface CaptionState {
+  state: 'awaiting_image' | 'awaiting_details' | 'level_selection' | 'draft_pending';
+  imagePath?: string;            // User-provided poster/cover image
+  analysis?: CaptionAnalysisResult;  // AI analysis result
+  details?: {
+    price: number;
+    format: string;
+    eta?: string;
+    closeDate?: string;
+  };
+  level?: number;
+  draft?: string;
+  timestamp: number;
+}
+
 // Utility function for delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -84,6 +100,7 @@ export class MessageHandler {
   private bulkState: BulkState | null = null;
   private researchState: ResearchState | null = null;  // For /new command
   private posterState: PosterState | null = null;  // For /poster command
+  private captionState: CaptionState | null = null;  // For /caption command
   private targetGroupJid: string | null;
   private devGroupJid: string | null;
   private scheduledQueue: Array<{
@@ -190,6 +207,12 @@ export class MessageHandler {
         if (handled) return;
       }
 
+      // Check for caption state responses (/caption flow)
+      if (this.captionState) {
+        const handled = await this.handleCaptionResponse(from, messageText, message);
+        if (handled) return;
+      }
+
       // Detect if this is an FGB broadcast
       const detection = detectFGBBroadcast(message);
 
@@ -270,6 +293,10 @@ export class MessageHandler {
           await this.startPosterMode(from, args);
           return true;
 
+        case '/caption':
+          await this.startCaptionMode(from);
+          return true;
+
         default:
           return false;
       }
@@ -302,10 +329,14 @@ export class MessageHandler {
 /queue - Lihat antrian broadcast terjadwal
 /flush - Kirim semua antrian SEKARANG
 
-*Poster Mode (BARU!):* 🎨
+*Poster Mode:* 🎨
 /poster [platform] - Buat poster dari cover
   - Kirim cover, reply DONE, dapat poster!
   - Platforms: ig_story, ig_square, wa_status
+
+*Caption Mode (BARU!):* 📝
+/caption - Generate materi promosi dari gambar
+  - Kirim poster/cover → AI analyze → konfirmasi → draft!
 
 *Cara pakai (Single):*
 1. Forward broadcast FGB ke sini
@@ -2415,6 +2446,402 @@ Reply:
       }
       // Keep result poster, cleanup state
       this.posterState = null;
+    }
+  }
+
+  // ==================== CAPTION GENERATION FLOW ====================
+
+  private async startCaptionMode(from: string) {
+    // Clear any existing caption state
+    this.clearCaptionState();
+
+    // Initialize caption state
+    this.captionState = {
+      state: 'awaiting_image',
+      timestamp: Date.now()
+    };
+
+    await this.sock.sendMessage(from, {
+      text: `📝 *CAPTION MODE*
+
+Kirim gambar poster atau cover buku.
+
+🖼️ *Poster (banyak buku)* → Series promo
+📕 *Cover (1 buku)* → Single book promo
+
+Reply *CANCEL* untuk batalkan.`
+    });
+
+    logger.info('Caption mode started');
+  }
+
+  private async handleCaptionResponse(from: string, text: string, message: proto.IWebMessageInfo): Promise<boolean> {
+    if (!this.captionState) return false;
+
+    // Check if state is expired (10 minutes)
+    if (Date.now() - this.captionState.timestamp > 10 * 60 * 1000) {
+      logger.info('Caption state expired');
+      this.clearCaptionState();
+      return false;
+    }
+
+    const lowerText = text.toLowerCase().trim();
+
+    // Check for CANCEL at any state
+    if (lowerText === 'cancel' || lowerText === 'batal') {
+      await this.sock.sendMessage(from, { text: '❌ Caption mode dibatalkan.' });
+      this.clearCaptionState();
+      return true;
+    }
+
+    // STATE: Awaiting image
+    if (this.captionState.state === 'awaiting_image') {
+      // Check if message has image
+      const content = message.message;
+      if (content?.imageMessage) {
+        await this.collectCaptionImage(from, message);
+        return true;
+      }
+      // Not an image - ignore or remind
+      return false;
+    }
+
+    // STATE: Awaiting details (price, format, eta, close)
+    if (this.captionState.state === 'awaiting_details') {
+      const details = this.parseCaptionDetails(text);
+      if (!details) {
+        await this.sock.sendMessage(from, {
+          text: `⚠️ Format tidak valid. Contoh:
+• 175000 bb apr26 close 20des
+• 125000 hb mei26
+
+Reply dengan: [harga] [format] [eta] [close date]`
+        });
+        return true;
+      }
+
+      this.captionState.details = details;
+      this.captionState.state = 'level_selection';
+      this.captionState.timestamp = Date.now();
+
+      await this.sock.sendMessage(from, {
+        text: `✅ Details disimpan:
+💰 Rp ${details.price.toLocaleString('id-ID')}
+📦 ${details.format}
+${details.eta ? `📅 ETA: ${details.eta}` : ''}
+${details.closeDate ? `⏰ Close: ${details.closeDate}` : ''}
+
+Pilih level rekomendasi:
+*1* - Standard (informatif)
+*2* - Recommended (persuasif)
+*3* - Top Pick (racun mode 🔥)`
+      });
+      return true;
+    }
+
+    // STATE: Level selection
+    if (this.captionState.state === 'level_selection') {
+      if (['1', '2', '3'].includes(lowerText)) {
+        const level = parseInt(lowerText);
+        await this.generateCaptionDraft(from, level);
+        return true;
+      }
+
+      await this.sock.sendMessage(from, {
+        text: '⚠️ Balas dengan 1, 2, atau 3'
+      });
+      return true;
+    }
+
+    // STATE: Draft pending
+    if (this.captionState.state === 'draft_pending') {
+      // YES DEV
+      if (lowerText === 'yes dev' || lowerText === 'y dev') {
+        await this.sendCaptionBroadcast(from, this.devGroupJid || undefined);
+        return true;
+      }
+
+      // YES
+      if (lowerText === 'yes' || lowerText === 'y' || lowerText === 'ya') {
+        await this.sendCaptionBroadcast(from);
+        return true;
+      }
+
+      // EDIT
+      if (lowerText.includes('edit')) {
+        if (this.captionState.draft) {
+          await this.sock.sendMessage(from, { text: this.captionState.draft });
+        }
+        await this.sock.sendMessage(from, {
+          text: '✏️ Draft di atas. Edit manual lalu kirim ulang kalau perlu.'
+        });
+        this.clearCaptionState();
+        return true;
+      }
+
+      // REGEN
+      if (lowerText === 'regen' || lowerText === 'ulang') {
+        this.captionState.state = 'level_selection';
+        await this.sock.sendMessage(from, {
+          text: `Pilih level lagi:
+*1* - Standard | *2* - Recommended | *3* - Top Pick`
+        });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async collectCaptionImage(from: string, message: proto.IWebMessageInfo) {
+    if (!this.captionState) return;
+
+    try {
+      const content = message.message?.imageMessage;
+      if (!content) return;
+
+      await this.sock.sendMessage(from, { text: '⏳ Analyzing image...' });
+
+      // Download image
+      const { downloadMediaMessage } = await this.baileysPromise;
+      const buffer = await downloadMediaMessage(message, 'buffer', {}) as Buffer;
+
+      // Save to media folder
+      const filename = `caption_${Date.now()}.jpg`;
+      const filepath = path.join(this.mediaPath, filename);
+      await fsPromises.writeFile(filepath, buffer);
+
+      this.captionState.imagePath = filepath;
+      logger.info(`Caption image saved: ${filepath}`);
+
+      // Analyze with AI
+      const analysis = await this.aiClient.analyzeCaption(filepath);
+
+      if (analysis.error) {
+        throw new Error(analysis.error);
+      }
+
+      this.captionState.analysis = analysis;
+      this.captionState.state = 'awaiting_details';
+      this.captionState.timestamp = Date.now();
+
+      // Build analysis summary
+      let summary = '';
+      if (analysis.is_series) {
+        summary = `📚 *SERIES DETECTED*
+
+*${analysis.series_name || 'Book Series'}*
+${analysis.publisher ? `Publisher: ${analysis.publisher}` : ''}
+
+*${analysis.book_titles.length} judul:*
+${analysis.book_titles.slice(0, 10).map(t => `• ${t}`).join('\n')}
+${analysis.book_titles.length > 10 ? `\n...dan ${analysis.book_titles.length - 10} lainnya` : ''}
+
+${analysis.description}`;
+      } else {
+        summary = `📕 *SINGLE BOOK DETECTED*
+
+*${analysis.title || 'Book'}*
+${analysis.author ? `by ${analysis.author}` : ''}
+${analysis.publisher ? `Publisher: ${analysis.publisher}` : ''}
+
+${analysis.description}`;
+      }
+
+      await this.sock.sendMessage(from, {
+        text: `${summary}
+
+---
+Reply dengan format:
+*[harga] [format] [eta] [close]*
+
+Contoh:
+175000 bb apr26 close 20des
+125000 hb mei26`
+      });
+
+    } catch (error: any) {
+      logger.error('Caption image analysis failed:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal analyze gambar: ${error.message}`
+      });
+      this.clearCaptionState();
+    }
+  }
+
+  private parseCaptionDetails(input: string): { price: number; format: string; eta?: string; closeDate?: string } | null {
+    const parts = input.toLowerCase().trim().split(/\s+/);
+    if (parts.length < 2) return null;
+
+    // First part should be price
+    const priceStr = parts[0].replace(/[^\d]/g, '');
+    const price = parseInt(priceStr, 10);
+    if (isNaN(price) || price <= 0) return null;
+
+    // Look for format
+    let format: string | undefined;
+    const formatMatch = parts.find(p => ['hb', 'pb', 'bb'].includes(p));
+    if (formatMatch) {
+      format = formatMatch.toUpperCase();
+    }
+
+    // Look for ETA (month patterns)
+    let eta: string | undefined;
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'mei', 'jun', 'jul', 'aug', 'sep', 'oct', 'okt', 'nov', 'dec', 'des'];
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p !== 'close' && months.some(m => p.includes(m))) {
+        // Check if next part looks like a year
+        const nextPart = parts[i + 1];
+        if (nextPart && /^\d{2,4}$/.test(nextPart)) {
+          eta = `${p.charAt(0).toUpperCase() + p.slice(1)}'${nextPart.slice(-2)}`;
+        } else if (/\d{2}$/.test(p)) {
+          // Already has year like "apr26"
+          eta = p.charAt(0).toUpperCase() + p.slice(1, -2) + "'" + p.slice(-2);
+        } else {
+          eta = p.charAt(0).toUpperCase() + p.slice(1);
+        }
+        break;
+      }
+    }
+
+    // Look for close date
+    let closeDate: string | undefined;
+    const closeIdx = parts.findIndex(p => p === 'close');
+    if (closeIdx !== -1 && closeIdx < parts.length - 1) {
+      // Join remaining as close date
+      closeDate = parts.slice(closeIdx + 1, closeIdx + 3).join(' ');
+    }
+
+    return { price, format: format || 'HB', eta, closeDate };
+  }
+
+  private async generateCaptionDraft(from: string, level: number) {
+    if (!this.captionState || !this.captionState.analysis || !this.captionState.details) {
+      await this.sock.sendMessage(from, { text: '❌ Error: data tidak lengkap.' });
+      this.clearCaptionState();
+      return;
+    }
+
+    try {
+      await this.sock.sendMessage(from, { text: `⏳ Generating level ${level} caption...` });
+
+      const request: CaptionGenerateRequest = {
+        analysis: this.captionState.analysis,
+        price: this.captionState.details.price,
+        format: this.captionState.details.format,
+        eta: this.captionState.details.eta,
+        close_date: this.captionState.details.closeDate,
+        level: level
+      };
+
+      const result = await this.aiClient.generateCaption(request);
+
+      this.captionState.level = level;
+      this.captionState.draft = result.draft;
+      this.captionState.state = 'draft_pending';
+      this.captionState.timestamp = Date.now();
+
+      // Send draft with image
+      if (this.captionState.imagePath && fs.existsSync(this.captionState.imagePath)) {
+        await this.sock.sendMessage(from, {
+          image: { url: this.captionState.imagePath },
+          caption: `📝 *DRAFT CAPTION*
+
+${result.draft}
+
+---
+Reply:
+• *YES* - Kirim ke grup PRODUCTION
+• *YES DEV* - Kirim ke grup DEV
+• *REGEN* - Generate ulang
+• *EDIT* - Copy draft untuk edit manual
+• *CANCEL* - Batalkan`
+        });
+      } else {
+        await this.sock.sendMessage(from, {
+          text: `📝 *DRAFT CAPTION*
+
+${result.draft}
+
+---
+Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
+        });
+      }
+
+      logger.info(`Caption draft generated, level=${level}`);
+    } catch (error: any) {
+      logger.error('Caption generation failed:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal generate caption: ${error.message}`
+      });
+      this.clearCaptionState();
+    }
+  }
+
+  private async sendCaptionBroadcast(from: string, targetJid?: string) {
+    if (!this.captionState || !this.captionState.draft) {
+      await this.sock.sendMessage(from, { text: '❌ Tidak ada draft yang pending.' });
+      return;
+    }
+
+    const sendToJid = targetJid || this.targetGroupJid;
+    const isDevGroup = targetJid === this.devGroupJid;
+
+    if (!sendToJid) {
+      await this.sock.sendMessage(from, {
+        text: '❌ TARGET_GROUP_JID belum di-set.'
+      });
+      this.clearCaptionState();
+      return;
+    }
+
+    try {
+      const { draft, imagePath } = this.captionState;
+
+      // Send to target group with image
+      if (imagePath && fs.existsSync(imagePath)) {
+        await this.sock.sendMessage(sendToJid, {
+          image: { url: imagePath },
+          caption: draft || ''
+        });
+      } else {
+        await this.sock.sendMessage(sendToJid, {
+          text: draft || ''
+        });
+      }
+
+      const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
+      logger.info(`Caption broadcast sent to ${groupType}: ${sendToJid}`);
+
+      await this.sock.sendMessage(from, {
+        text: `✅ Caption berhasil dikirim ke grup ${groupType}!`
+      });
+
+    } catch (error: any) {
+      logger.error('Caption broadcast failed:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal kirim: ${error.message}`
+      });
+    } finally {
+      this.clearCaptionState();
+    }
+  }
+
+  private clearCaptionState() {
+    if (this.captionState) {
+      // Cleanup image if exists
+      if (this.captionState.imagePath) {
+        try {
+          if (fs.existsSync(this.captionState.imagePath)) {
+            fs.unlinkSync(this.captionState.imagePath);
+            logger.debug(`Cleaned up caption image: ${this.captionState.imagePath}`);
+          }
+        } catch (error) {
+          logger.error('Failed to cleanup caption image:', error);
+        }
+      }
+      this.captionState = null;
     }
   }
 }

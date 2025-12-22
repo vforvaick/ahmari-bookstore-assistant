@@ -63,6 +63,11 @@ graph TD
     - **AI Backgrounds**: `background.py` uses Gemini 2.0 Flash to generate creative backgrounds.
     - **Hybrid Composition**: Combines AI-generated backgrounds with code-based layout precision.
     - **Styles**: Supports gradients, stripes, solid colors, and AI creative themes.
+  - **Caption Generator (v2.1.0)**:
+    - **Core**: `caption_analyzer.py` uses Gemini Vision to "read" posters and book covers.
+    - **Dual Mode**: Auto-detects Series (multiple books) vs Single Book.
+    - **Flow**: Extract Info → User Config (Price/Format) → AI Copywriting (Levels 1-3).
+    - **Models**: `CaptionAnalysisResult`, `CaptionGenerateRequest`.
   - **3-Tier Recommendation System** (v1.4.0):
     - **Level 1 (Standard)**: Informative, soft-sell tone.
     - **Level 2 (Recommended)**: Persuasive, value-driven tone.
