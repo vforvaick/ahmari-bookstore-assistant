@@ -100,9 +100,12 @@ class CoverAnalyzer:
     
     def _configure_current_key(self):
         """Configure genai with current API key."""
+        import os
         genai.configure(api_key=self.api_keys[self.current_key_index])
-        # Use gemini-1.5-flash for cover detection (separate quota from 2.0)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        # Use same model as main client, or default to gemini-2.5-flash
+        model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+        self.model = genai.GenerativeModel(model_name)
+        logger.info(f"Configured with API key index {self.current_key_index}, model: {model_name}")
     
     def _rotate_key(self):
         """Rotate to next API key."""

@@ -123,6 +123,7 @@ class PosterGenerator:
         
         # Step 6: Create background
         bg_colors = analysis.dominant_colors or ["#4A90D9", "#87CEEB"]
+        logger.info(f"Background colors: {bg_colors}, style: {background_style}")
         
         if background_style == "ai_creative":
             # Use AI to generate creative background
