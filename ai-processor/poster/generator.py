@@ -87,24 +87,28 @@ class PosterGenerator:
             else:
                 pil_images.append(Image.open(source))
         
-        # Step 3: Analyze images to detect covers
+        # Step 3: Analyze images to detect covers (with fallback)
         logger.info("Analyzing source images for cover detection...")
         analysis = await self.analyzer.detect_covers(pil_images)
         
-        if analysis.error:
-            logger.error(f"Cover detection failed: {analysis.error}")
-            raise Exception(f"Failed to detect covers: {analysis.error}")
-        
-        logger.info(f"Detected {len(analysis.covers)} covers")
-        
-        # Step 4: Crop covers from sources
+        # Step 4: Get covers - either from AI detection or use images as-is
         covers = []
-        for detected in analysis.covers:
-            source_img = pil_images[detected.source_image_index]
-            cropped = self.renderer.crop_cover(source_img, detected.bbox)
-            covers.append(cropped)
+        if analysis.error or len(analysis.covers) == 0:
+            # Fallback: treat each source image as a single cover
+            logger.warning(f"AI detection unavailable ({analysis.error or 'no covers found'}), using images directly")
+            covers = pil_images.copy()
+            # Use code-based color detection
+            if not analysis.dominant_colors:
+                analysis.dominant_colors = await self.analyzer.analyze_colors(pil_images)
+        else:
+            logger.info(f"Detected {len(analysis.covers)} covers")
+            # Crop covers from sources based on AI-detected bounding boxes
+            for detected in analysis.covers:
+                source_img = pil_images[detected.source_image_index]
+                cropped = self.renderer.crop_cover(source_img, detected.bbox)
+                covers.append(cropped)
         
-        logger.info(f"Cropped {len(covers)} covers from sources")
+        logger.info(f"Using {len(covers)} covers from sources")
         
         # Step 5: Calculate layout
         layout = self.layout_engine.calculate_layout(
