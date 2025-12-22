@@ -101,7 +101,7 @@ class CaptionAnalyzer:
         try:
             img = self._load_image(image_path)
             
-            prompt = """Analyze this image of book(s) for creating promotional content.
+            prompt = """Analyze this image of book(s) to extract information for a bookstore.
 
 Determine if this is:
 A) A POSTER with MULTIPLE book covers (series/collection)
@@ -109,15 +109,20 @@ B) A SINGLE book cover
 
 For MULTIPLE books (poster/collage):
 - Extract the series name (usually at top or prominent text)
-- List ALL visible book titles
+- List ALL visible book titles (be thorough, don't miss any!)
 - Identify the publisher if visible on covers
-- Write a 1-2 sentence description of what this series is about
+- Write a SHORT 1 sentence describing the series topic/theme (factual, not marketing)
 
 For SINGLE book:
 - Extract the book title
 - Extract author if visible
 - Identify publisher if visible
-- Write a 1-2 sentence description of what the book is about
+- Write a SHORT 1 sentence describing the book topic (factual, not marketing)
+
+IMPORTANT for description:
+- Keep it SHORT and FACTUAL (what is this book about?)
+- Example good: "Interactive board books with lights and sounds for toddlers"
+- Example bad: "This is a delightful series of interactive children's books designed to engage young readers..."
 
 Respond in this exact JSON format:
 {
@@ -127,10 +132,10 @@ Respond in this exact JSON format:
     "book_titles": ["Title 1", "Title 2"],
     "title": "Book Title" or null (for single book),
     "author": "Author Name" or null,
-    "description": "A compelling description of the book(s)"
+    "description": "Short factual description of the book(s)"
 }
 
-Be thorough - don't miss any book titles visible in the image!
+Be thorough with book titles - don't miss any visible in the image!
 Respond ONLY with valid JSON, no other text."""
 
             # Convert image to bytes for Gemini

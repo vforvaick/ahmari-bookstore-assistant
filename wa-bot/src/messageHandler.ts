@@ -2656,8 +2656,8 @@ Reply dengan format:
 *[harga] [format] [eta] [close]*
 
 Contoh:
-175000 bb apr26 close 20des
-125000 hb mei26`
+175000 bb apr 26 close 20 des
+125000 hb mei 26`
       });
 
     } catch (error: any) {
@@ -2738,7 +2738,35 @@ Contoh:
       const result = await this.aiClient.generateCaption(request);
 
       this.captionState.level = level;
-      this.captionState.draft = result.draft;
+      let draft = result.draft;
+
+      // Search preview links for book titles (for series with multiple books)
+      const analysis = this.captionState.analysis;
+      if (analysis.is_series && analysis.book_titles.length > 0) {
+        await this.sock.sendMessage(from, { text: '🔍 Searching preview links...' });
+
+        // Take max 3 book titles to search links for
+        const titlesToSearch = analysis.book_titles.slice(0, 3);
+        const previewLinks: string[] = [];
+
+        for (const bookTitle of titlesToSearch) {
+          try {
+            const links = await this.aiClient.searchPreviewLinks(bookTitle, 1);
+            if (links.length > 0) {
+              previewLinks.push(`*- ${bookTitle}*\n${links[0]}`);
+            }
+          } catch (err) {
+            logger.warn(`Failed to find preview link for: ${bookTitle}`);
+          }
+        }
+
+        // Append preview links to draft
+        if (previewLinks.length > 0) {
+          draft += `\n\nPreview:\n${previewLinks.join('\n\n')}`;
+        }
+      }
+
+      this.captionState.draft = draft;
       this.captionState.state = 'draft_pending';
       this.captionState.timestamp = Date.now();
 
@@ -2748,7 +2776,7 @@ Contoh:
           image: { url: this.captionState.imagePath },
           caption: `📝 *DRAFT CAPTION*
 
-${result.draft}
+${draft}
 
 ---
 Reply:
@@ -2762,14 +2790,14 @@ Reply:
         await this.sock.sendMessage(from, {
           text: `📝 *DRAFT CAPTION*
 
-${result.draft}
+${draft}
 
 ---
 Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
         });
       }
 
-      logger.info(`Caption draft generated, level=${level}`);
+      logger.info(`Caption draft generated, level=${level}, previewLinks=${analysis.is_series}`);
     } catch (error: any) {
       logger.error('Caption generation failed:', error);
       await this.sock.sendMessage(from, {
