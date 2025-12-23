@@ -1,8 +1,11 @@
 """
-GeminiClient - Simplified Review-Only Implementation
+GeminiClient - Multi-Model Rotation with API Key Fallback
 
-Uses gemini-2.5-flash model with round-robin API key rotation.
-Now only generates review paragraph + optional publisher guess.
+Strategy: Rotate through models FIRST, then switch API key when all models exhausted.
+Models: gemini-2.5-flash → gemini-2.5-flash-lite → gemini-3-flash
+This maximizes quota usage across different model rate limits.
+
+Only generates review paragraph + optional publisher guess.
 Formatting is handled by OutputFormatter (rule-based).
 """
 
@@ -25,10 +28,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Available models for rotation (in priority order)
+# gemini-2.5-flash: Primary, best quality
+# gemini-2.5-flash-lite: Faster, good for simple tasks
+# gemini-3-flash: Latest model, may have different rate limits
+AVAILABLE_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3-flash",
+]
 
-class AIReviewResponse(BaseModel):
-    """Response from Gemini containing review and optional publisher guess."""
-    publisher_guess: Optional[str] = None
+
 class AIReviewResponse(BaseModel):
     """Response from Gemini containing review and optional publisher guess."""
     publisher_guess: Optional[str] = None
@@ -38,30 +48,33 @@ class AIReviewResponse(BaseModel):
 
 class GeminiClient:
     """
-    Gemini API client with built-in round-robin key rotation and fallback.
+    Gemini API client with multi-model rotation and API key fallback.
     
-    Now simplified to ONLY generate:
-    1. Publisher guess (if not parsed from raw text)
-    2. Review paragraph in Indonesian "racun belanja" style
+    Rotation Strategy:
+    1. Try all models with current API key
+    2. If all models exhausted (rate limited), switch to next API key
+    3. Repeat until success or all combinations exhausted
     
-    All formatting is handled by OutputFormatter (rule-based).
+    This maximizes quota usage by leveraging per-model rate limits.
     
     Environment Variables:
         GEMINI_API_KEYS: Comma-separated list of API keys (preferred)
         GEMINI_API_KEY: Single API key (fallback)
-        GEMINI_MODEL: Model to use (default: gemini-2.5-flash)
+        GEMINI_MODELS: Comma-separated list of models (optional, uses default list)
     """
     
-    # Class-level counter for round-robin (shared across instances)
-    _request_counter = 0
+    # Class-level counters for round-robin (shared across instances)
+    _model_counter = 0
+    _key_counter = 0
     _counter_lock = threading.Lock()
     
-    def __init__(self, api_keys: Optional[List[str]] = None):
+    def __init__(self, api_keys: Optional[List[str]] = None, models: Optional[List[str]] = None):
         """
-        Initialize client with one or more API keys.
+        Initialize client with one or more API keys and models.
         
         Args:
             api_keys: List of API keys. If None, reads from environment.
+            models: List of models to rotate through. If None, uses AVAILABLE_MODELS.
         """
         if api_keys is None:
             # Try comma-separated keys first, then single key
@@ -76,22 +89,48 @@ class GeminiClient:
             raise ValueError("At least one GEMINI_API_KEY is required")
         
         self.api_keys = api_keys
-        # Default to gemini-2.5-flash which is confirmed working
-        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
         
-        logger.info(f"GeminiClient initialized with {len(self.api_keys)} API keys, model: {self.model_name}")
+        # Initialize model list - can be overridden via env or param
+        if models is None:
+            models_str = os.getenv('GEMINI_MODELS', '')
+            if models_str:
+                self.models = [m.strip() for m in models_str.split(',') if m.strip()]
+            else:
+                self.models = AVAILABLE_MODELS.copy()
+        else:
+            self.models = models
+        
+        # Track failed model+key combinations for this session
+        self._failed_combos: set = set()
+        
+        logger.info(f"GeminiClient initialized with {len(self.api_keys)} API keys, {len(self.models)} models")
+        logger.info(f"Models: {', '.join(self.models)}")
     
-    def _get_next_key_index(self) -> int:
-        """Get the next API key index using thread-safe round-robin."""
+    def _get_next_rotation(self) -> tuple[int, int]:
+        """
+        Get next model and key indices using round-robin.
+        Strategy: Rotate models first within same key, then switch key.
+        
+        Returns:
+            Tuple of (model_index, key_index)
+        """
         with self._counter_lock:
-            index = self._request_counter % len(self.api_keys)
-            GeminiClient._request_counter += 1
-        return index
+            model_idx = GeminiClient._model_counter % len(self.models)
+            key_idx = GeminiClient._key_counter % len(self.api_keys)
+            
+            # Increment model counter
+            GeminiClient._model_counter += 1
+            
+            # When we've cycled through all models, increment key counter
+            if GeminiClient._model_counter % len(self.models) == 0:
+                GeminiClient._key_counter += 1
+        
+        return model_idx, key_idx
     
-    def _get_model_with_key(self, api_key: str) -> genai.GenerativeModel:
-        """Get a GenerativeModel configured with a specific API key."""
+    def _get_model_with_key(self, api_key: str, model_name: str) -> genai.GenerativeModel:
+        """Get a GenerativeModel configured with a specific API key and model."""
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel(self.model_name)
+        return genai.GenerativeModel(model_name)
     
     def _extract_review_from_malformed(self, text: str) -> Optional[str]:
         """
@@ -194,8 +233,10 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
         """
         Generate Indonesian review paragraph from parsed data.
         
-        Uses round-robin key rotation with automatic fallback on quota errors.
-        If a key fails with 429 (quota exceeded), tries the next key.
+        Multi-model rotation strategy:
+        1. Try all models with current API key
+        2. If all models rate limited, switch to next API key
+        3. Repeat until success or all combinations exhausted
         
         Args:
             parsed: ParsedBroadcast object with book information.
@@ -206,7 +247,7 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
             AIReviewResponse with publisher_guess and review.
             
         Raises:
-            Exception: If all keys fail.
+            Exception: If all model+key combinations fail.
         """
         logger.info(f"Starting review generation for: {parsed.title} (level={level})")
         
@@ -214,104 +255,115 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
         logger.debug(f"Built prompt, length: {len(prompt)} chars")
         
         generation_config = {
-            "temperature": 0.8,  # Slightly more creative for review
+            "temperature": 0.8,
             "top_p": 0.95,
             "top_k": 40,
-            "max_output_tokens": 4096,  # Increased to 4096 to ensure complete responses
+            "max_output_tokens": 4096,
         }
         
-        # Get starting index for round-robin
-        start_index = self._get_next_key_index()
         last_error = None
+        total_combinations = len(self.models) * len(self.api_keys)
+        attempt = 0
         
-        # Try each key until one succeeds
-        for i in range(len(self.api_keys)):
-            key_index = (start_index + i) % len(self.api_keys)
-            api_key = self.api_keys[key_index]
+        # Strategy: try all models per key, then switch key
+        for key_idx in range(len(self.api_keys)):
+            api_key = self.api_keys[key_idx]
             key_suffix = api_key[-6:] if len(api_key) > 6 else api_key
             
-            try:
-                logger.info(f"Trying API key ...{key_suffix} (attempt {i+1}/{len(self.api_keys)})")
+            for model_idx in range(len(self.models)):
+                model_name = self.models[model_idx]
+                attempt += 1
+                combo_id = f"{model_name}:{key_suffix}"
                 
-                model = self._get_model_with_key(api_key)
-                
-                # Use synchronous call (google-generativeai doesn't have native async)
-                response = model.generate_content(
-                    prompt,
-                    generation_config=generation_config
-                )
-                
-                # Check if response has text
-                if not response.text:
-                    logger.warning(f"Empty response from API key ...{key_suffix}")
-                    if response.prompt_feedback:
-                        logger.warning(f"Prompt feedback: {response.prompt_feedback}")
+                # Skip if this combo already failed this session
+                if combo_id in self._failed_combos:
+                    logger.debug(f"Skipping known failed combo: {combo_id}")
                     continue
                 
-                result_text = response.text.strip()
-                logger.info(f"Success with API key ...{key_suffix}, response length: {len(result_text)}")
-                
-                # Parse response - expecting plain text review, optionally with PUBLISHER: prefix
-                publisher_guess = None
-                cleaned_title = None
-                review = result_text
-                
-                # Check if response starts with PUBLISHER: prefix (legacy/optional)
-                import re
-                publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
-                if publisher_match:
-                    publisher_guess = publisher_match.group(1).strip()
-                    review = result_text[publisher_match.end():].strip()
-                
-                # Check if response starts with TITLE: prefix (legacy/optional)
-                title_match = re.match(r'^TITLE:\s*(.+?)\n', review)
-                if title_match:
-                    cleaned_title = title_match.group(1).strip()
-                    review = review[title_match.end():].strip()
-                
-                # Clean up any accidental JSON formatting
-                if review.startswith('{') and '"review"' in review:
-                    try:
-                        result_json = json.loads(review)
-                        review = result_json.get('review', review)
-                        if not publisher_guess:
-                            publisher_guess = result_json.get('publisher_guess')
-                    except:
-                        pass
-                
-                # Remove quotes if wrapped
-                if review.startswith('"') and review.endswith('"'):
-                    review = review[1:-1]
-                
-                logger.info(f"Parsed review length: {len(review)}, title: {cleaned_title}, publisher: {publisher_guess}")
-                
-                return AIReviewResponse(
-                    publisher_guess=publisher_guess,
-                    cleaned_title=cleaned_title,
-                    review=review
-                )
-                
-            except google_exceptions.ResourceExhausted as e:
-                logger.warning(f"API key ...{key_suffix} quota exceeded (429), trying next key...")
-                last_error = e
-                continue
-                
-            except Exception as e:
-                error_str = str(e)
-                logger.error(f"API key ...{key_suffix} error: {error_str}")
-                logger.debug(f"Full traceback:\n{traceback.format_exc()}")
-                
-                if "429" in error_str or "quota" in error_str.lower():
-                    logger.warning(f"Quota error detected, trying next key...")
+                try:
+                    logger.info(f"[{attempt}/{total_combinations}] Trying {model_name} with key ...{key_suffix}")
+                    
+                    model = self._get_model_with_key(api_key, model_name)
+                    
+                    response = model.generate_content(
+                        prompt,
+                        generation_config=generation_config
+                    )
+                    
+                    # Check if response has text
+                    if not response.text:
+                        logger.warning(f"Empty response from {model_name}")
+                        if response.prompt_feedback:
+                            logger.warning(f"Prompt feedback: {response.prompt_feedback}")
+                        continue
+                    
+                    result_text = response.text.strip()
+                    logger.info(f"✓ Success with {model_name} (key ...{key_suffix}), response: {len(result_text)} chars")
+                    
+                    # Parse response
+                    publisher_guess = None
+                    cleaned_title = None
+                    review = result_text
+                    
+                    import re
+                    publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
+                    if publisher_match:
+                        publisher_guess = publisher_match.group(1).strip()
+                        review = result_text[publisher_match.end():].strip()
+                    
+                    title_match = re.match(r'^TITLE:\s*(.+?)\n', review)
+                    if title_match:
+                        cleaned_title = title_match.group(1).strip()
+                        review = review[title_match.end():].strip()
+                    
+                    if review.startswith('{') and '"review"' in review:
+                        try:
+                            result_json = json.loads(review)
+                            review = result_json.get('review', review)
+                            if not publisher_guess:
+                                publisher_guess = result_json.get('publisher_guess')
+                        except:
+                            pass
+                    
+                    if review.startswith('"') and review.endswith('"'):
+                        review = review[1:-1]
+                    
+                    logger.info(f"Parsed review: {len(review)} chars, publisher: {publisher_guess}")
+                    
+                    return AIReviewResponse(
+                        publisher_guess=publisher_guess,
+                        cleaned_title=cleaned_title,
+                        review=review
+                    )
+                    
+                except google_exceptions.ResourceExhausted as e:
+                    logger.warning(f"⚠ {model_name} rate limited (429), marking combo and trying next...")
+                    self._failed_combos.add(combo_id)
                     last_error = e
                     continue
-                else:
-                    # For non-quota errors, log but still try next key
-                    last_error = e
-                    continue
+                    
+                except Exception as e:
+                    error_str = str(e)
+                    logger.error(f"✗ {model_name} error: {error_str}")
+                    logger.debug(f"Full traceback:\n{traceback.format_exc()}")
+                    
+                    if "429" in error_str or "quota" in error_str.lower():
+                        logger.warning(f"Quota error detected, marking combo...")
+                        self._failed_combos.add(combo_id)
+                        last_error = e
+                        continue
+                    elif "not found" in error_str.lower() or "does not exist" in error_str.lower():
+                        # Model doesn't exist - mark as permanent failure
+                        logger.warning(f"Model {model_name} not available, marking as failed")
+                        self._failed_combos.add(combo_id)
+                        last_error = e
+                        continue
+                    else:
+                        last_error = e
+                        continue
         
-        # All keys failed
-        error_msg = f"All {len(self.api_keys)} API keys failed. Last error: {last_error}"
+        # All combinations exhausted
+        error_msg = f"All {total_combinations} model+key combinations exhausted. Last error: {last_error}"
         logger.error(error_msg)
         raise Exception(error_msg)
 

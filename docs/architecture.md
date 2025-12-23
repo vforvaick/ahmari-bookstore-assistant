@@ -72,8 +72,9 @@ graph TD
     - **Level 1 (Standard)**: Informative, soft-sell tone.
     - **Level 2 (Recommended)**: Persuasive, value-driven tone.
     - **Level 3 (Top Pick)**: "Racun Mode", high urgency, includes `⭐ Top Pick Ahmari Bookstore` marker.
- ### 4. Advanced Researcher (v1.8.2)
- ### 4. Advanced Researcher (v1.8.2)
+  - **Multi-Model Rotation** (v2.2.0):
+    - **Strategy**: Rotates `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3-flash` per API key to maximize quota.
+  - **Advanced Researcher** (v1.8.2):
 - **Flow:** `/new` (search) → Select Book → Details (Price/Format) → Level (1-3) → Draft
 - **Draft Options:** YES / YES DEV / COVER / LINKS / REGEN / EDIT / CANCEL
 - **Feedback Loop:** REGEN option asks for user feedback ("too long", "add info") → AI regenerates with instruction

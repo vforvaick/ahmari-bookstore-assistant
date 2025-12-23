@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Multi-Model Rotation Strategy**: Rate limit management for Gemini API.
+  - Rotates through models FIRST: `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3-flash`
+  - Then switches to next API key when all models exhausted
+  - Maximizes quota usage by leveraging per-model rate limits
+  - Tracks failed combinations to avoid retrying
+  - Environment variable `GEMINI_MODELS` to override model list (optional)
+
 - **Caption Generator (`/caption` command)**: Generate promotional text from poster/cover images
   - AI-powered image analysis using Gemini Vision
   - Auto-detects series (multiple books) vs single book cover
