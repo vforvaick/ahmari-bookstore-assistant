@@ -53,6 +53,7 @@ class PosterGenerator:
         title_text: Optional[str] = None,
         background_style: str = "gradient",
         custom_layout: Optional[List[int]] = None,
+        cover_type: Optional[str] = None,  # "single" or "multi" - skips AI detection
     ) -> Image.Image:
         """
         Generate poster from source images.
@@ -65,6 +66,7 @@ class PosterGenerator:
             title_text: Title text for the poster
             background_style: "solid", "gradient", "stripes"
             custom_layout: Optional custom layout (e.g., [3, 3, 3])
+            cover_type: "single" (each image = 1 cover) or "multi" (AI detects)
             
         Returns:
             Generated poster as PIL Image
@@ -87,26 +89,36 @@ class PosterGenerator:
             else:
                 pil_images.append(Image.open(source))
         
-        # Step 3: Analyze images to detect covers (with fallback)
-        logger.info("Analyzing source images for cover detection...")
-        analysis = await self.analyzer.detect_covers(pil_images)
-        
-        # Step 4: Get covers - either from AI detection or use images as-is
+        # Step 3: Analyze images to detect covers
+        # Skip AI detection if user specified cover_type
         covers = []
-        if analysis.error or len(analysis.covers) == 0:
-            # Fallback: treat each source image as a single cover
-            logger.warning(f"AI detection unavailable ({analysis.error or 'no covers found'}), using images directly")
+        analysis = AnalysisResult()  # Empty result for color extraction
+        
+        if cover_type == "single":
+            # User says each image is a single cover - skip AI detection entirely
+            logger.info(f"Cover type 'single' specified - skipping AI detection, using {len(pil_images)} images directly")
             covers = pil_images.copy()
             # Use code-based color detection
-            if not analysis.dominant_colors:
-                analysis.dominant_colors = await self.analyzer.analyze_colors(pil_images)
+            analysis.dominant_colors = await self.analyzer.analyze_colors(pil_images)
         else:
-            logger.info(f"Detected {len(analysis.covers)} covers")
-            # Crop covers from sources based on AI-detected bounding boxes
-            for detected in analysis.covers:
-                source_img = pil_images[detected.source_image_index]
-                cropped = self.renderer.crop_cover(source_img, detected.bbox)
-                covers.append(cropped)
+            # Auto-detect covers using AI (or use images directly if AI fails)
+            logger.info("Analyzing source images for cover detection...")
+            analysis = await self.analyzer.detect_covers(pil_images)
+            
+            if analysis.error or len(analysis.covers) == 0:
+                # Fallback: treat each source image as a single cover
+                logger.warning(f"AI detection unavailable ({analysis.error or 'no covers found'}), using images directly")
+                covers = pil_images.copy()
+                # Use code-based color detection
+                if not analysis.dominant_colors:
+                    analysis.dominant_colors = await self.analyzer.analyze_colors(pil_images)
+            else:
+                logger.info(f"Detected {len(analysis.covers)} covers")
+                # Crop covers from sources based on AI-detected bounding boxes
+                for detected in analysis.covers:
+                    source_img = pil_images[detected.source_image_index]
+                    cropped = self.renderer.crop_cover(source_img, detected.bbox)
+                    covers.append(cropped)
         
         logger.info(f"Using {len(covers)} covers from sources")
         

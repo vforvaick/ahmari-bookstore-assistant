@@ -363,10 +363,11 @@ export class AIClient {
     platform: string = 'ig_story',
     title?: string,
     backgroundStyle: string = 'gradient',
-    customLayout?: string
+    customLayout?: string,
+    coverType?: string  // 'single' or undefined - skips AI detection if set
   ): Promise<Buffer> {
     try {
-      logger.info(`Generating poster with ${imagePaths.length} images, platform=${platform}`);
+      logger.info(`Generating poster with ${imagePaths.length} images, platform=${platform}, coverType=${coverType}`);
 
       const FormData = require('form-data');
       const fs = require('fs');
@@ -384,6 +385,7 @@ export class AIClient {
       });
       if (title) params.append('title', title);
       if (customLayout) params.append('custom_layout', customLayout);
+      if (coverType) params.append('cover_type', coverType);
 
       const response = await this.client.post(
         `/poster/generate?${params.toString()}`,

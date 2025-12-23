@@ -647,7 +647,8 @@ async def generate_poster(
     platform: str = "ig_story",
     title: str = None,
     background_style: str = "gradient",
-    custom_layout: str = None
+    custom_layout: str = None,
+    cover_type: str = None  # "single" or "multi" - skips AI detection if set
 ):
     """
     Generate poster from uploaded cover images.
@@ -658,6 +659,7 @@ async def generate_poster(
         title: Optional title text for the poster
         background_style: ai_creative, gradient, stripes, solid
         custom_layout: Optional layout like "3-3-3" for 9 covers in 3 rows
+        cover_type: "single" (each image = 1 cover) or None (AI detects)
         
     Returns:
         Generated poster as image file
@@ -669,7 +671,7 @@ async def generate_poster(
     import uuid
     
     try:
-        logger.info(f"Generating poster with {len(images)} images, platform={platform}, bg={background_style}")
+        logger.info(f"Generating poster with {len(images)} images, platform={platform}, bg={background_style}, cover_type={cover_type}")
         
         # Load uploaded images
         pil_images = []
@@ -696,7 +698,8 @@ async def generate_poster(
             dimensions=(width, height),
             title_text=title,
             background_style=background_style,
-            custom_layout=layout
+            custom_layout=layout,
+            cover_type=cover_type  # Pass to skip AI detection
         )
         
         # Save to temp file

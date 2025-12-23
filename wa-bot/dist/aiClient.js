@@ -210,9 +210,10 @@ class AIClient {
             throw new Error(`Failed to get poster options: ${error.message}`);
         }
     }
-    async generatePoster(imagePaths, platform = 'ig_story', title, backgroundStyle = 'gradient', customLayout) {
+    async generatePoster(imagePaths, platform = 'ig_story', title, backgroundStyle = 'gradient', customLayout, coverType // 'single' or undefined - skips AI detection if set
+    ) {
         try {
-            logger.info(`Generating poster with ${imagePaths.length} images, platform=${platform}`);
+            logger.info(`Generating poster with ${imagePaths.length} images, platform=${platform}, coverType=${coverType}`);
             const FormData = require('form-data');
             const fs = require('fs');
             const formData = new FormData();
@@ -229,6 +230,8 @@ class AIClient {
                 params.append('title', title);
             if (customLayout)
                 params.append('custom_layout', customLayout);
+            if (coverType)
+                params.append('cover_type', coverType);
             const response = await this.client.post(`/poster/generate?${params.toString()}`, formData, {
                 headers: formData.getHeaders(),
                 responseType: 'arraybuffer',
@@ -240,6 +243,38 @@ class AIClient {
         catch (error) {
             logger.error('Poster generation failed:', error.message);
             throw new Error(`Poster generation failed: ${error.message}`);
+        }
+    }
+    // ============== Caption Generator Methods ==============
+    async analyzeCaption(imagePath) {
+        try {
+            logger.info(`Analyzing image for caption: ${imagePath}`);
+            const FormData = require('form-data');
+            const fs = require('fs');
+            const formData = new FormData();
+            formData.append('file', fs.createReadStream(imagePath));
+            const response = await this.client.post('/caption/analyze', formData, {
+                headers: formData.getHeaders(),
+                timeout: 60000, // 60 seconds for AI analysis
+            });
+            logger.info(`Caption analysis complete: series=${response.data.is_series}, titles=${response.data.book_titles?.length || 0}`);
+            return response.data;
+        }
+        catch (error) {
+            logger.error('Caption analysis failed:', error.message);
+            throw new Error(`Caption analysis failed: ${error.message}`);
+        }
+    }
+    async generateCaption(request) {
+        try {
+            logger.info(`Generating caption: series=${request.analysis.is_series}, level=${request.level}`);
+            const response = await this.client.post('/caption/generate', request);
+            logger.info('Caption generation successful');
+            return response.data;
+        }
+        catch (error) {
+            logger.error('Caption generation failed:', error.message);
+            throw new Error(`Caption generation failed: ${error.message}`);
         }
     }
 }

@@ -38,6 +38,38 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 ## Known Issues
 - None currently documented.
 
+## Backlog
+
+> [!NOTE]
+> Items below are ideas/requests to be evaluated and prioritized later.
+
+### UX Improvements
+- [x] **Improve `/help` Command Readability** ✅ 2025-12-23
+  - Grouped by purpose: "Buat Promo", "Buat Poster", "Jadwal", "Admin"
+  - Added argument examples for `/bulk`, `/new`, `/poster`
+  - Bahasa Indonesia friendly
+
+- [ ] **Unified Draft Command System**
+  - **Why**: Currently each feature (forward, research, bulk) has its own draft commands (YES, YES DEV, REGEN, etc.) which is inconsistent and leads to code duplication.
+  - **Proposal**:
+    - Create a single, universal list of draft commands applicable to ALL drafts
+    - When sending a draft: Bubble 1 = draft content, Bubble 2 = universal command menu
+    - All drafts share the same editable possibilities, so one handler suffices
+    - Benefits: cleaner UX, no hardcoding per feature, simpler codebase
+
+### Architecture
+- [ ] **Codebase Refactor Proposal**
+  - **Why**: As features grow, evaluate architecture for maintainability.
+  - **Action**: Create detailed refactor proposal analyzing current structure and suggesting improvements.
+  - **Status**: Needs analysis phase first.
+
+### Performance
+- [x] **Gemini API Efficiency Audit** ✅ 2025-12-23
+  - **Finding**: Poster analyzer is only AI call that can be optimized
+  - **Solution**: Ask user "Single or Multi cover?" → skip AI detection for single
+  - **Impact**: 100% reduction in poster analyzer API calls when user selects single
+  - Auto-detect image-only messages → removed `/caption` command
+
 ## Technical Debt
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 

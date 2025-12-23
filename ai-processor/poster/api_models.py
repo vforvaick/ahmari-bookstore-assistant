@@ -13,6 +13,7 @@ class PosterGenerateRequest(BaseModel):
     title: Optional[str] = None  # Title text for poster
     background_style: str = "gradient"  # ai_creative, gradient, stripes, solid
     layout: Optional[str] = None  # Custom layout like "3-3-3"
+    cover_type: Optional[str] = None  # "single" or "multi" - skips AI detection if set
 
 
 class PosterOptionsResponse(BaseModel):

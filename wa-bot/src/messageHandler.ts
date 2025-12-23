@@ -65,13 +65,14 @@ interface ResearchState {
 
 // Poster state for /poster command (poster generation flow)
 interface PosterState {
-  state: 'collecting' | 'platform_selection' | 'background_selection' | 'title_input' | 'generating' | 'preview';
+  state: 'collecting' | 'cover_type_selection' | 'platform_selection' | 'background_selection' | 'title_input' | 'generating' | 'preview';
   imagePaths: string[];  // Collected cover images
   platform?: string;  // Selected platform preset
   backgroundStyle?: string;  // Selected background style
   title?: string;  // Optional poster title
   customLayout?: string;  // Custom layout like "3-3-3"
   posterPath?: string;  // Generated poster path
+  coverType?: string;  // 'single' - skips AI detection
   timestamp: number;
 }
 
@@ -225,8 +226,12 @@ export class MessageHandler {
         } else {
           await this.processFGBBroadcast(message, detection);
         }
+      } else if (detection.hasMedia && !detection.text.trim()) {
+        // Image-only message (no FGB caption) → trigger caption flow
+        logger.info('Image-only message detected, starting caption flow');
+        await this.startCaptionModeWithImage(from, message);
       } else {
-        logger.debug('Not an FGB broadcast, ignoring');
+        logger.debug('Not an FGB broadcast or image-only, ignoring');
       }
     } catch (error) {
       logger.error('Error handling message:', error);
@@ -293,9 +298,7 @@ export class MessageHandler {
           await this.startPosterMode(from, args);
           return true;
 
-        case '/caption':
-          await this.startCaptionMode(from);
-          return true;
+        // /caption removed - now auto-detected from image-only messages
 
         default:
           return false;
@@ -309,43 +312,35 @@ export class MessageHandler {
 
   private async sendHelp(from: string) {
     await this.sock.sendMessage(from, {
-      text: `🤖 *Ahmari Bookstore Bot - Command Center*
+      text: `🤖 *Ahmari Bookstore Bot*
 
-*Commands:*
-/help - Tampilkan bantuan ini
-/status - Status bot dan konfigurasi
-/groups - List semua grup yang bot sudah join
-/setgroup <prod|dev> <JID> - Set target grup
-/setmarkup <angka> - Set markup harga (contoh: 20000)
-/getmarkup - Lihat markup harga saat ini
-/cancel - Batalkan pending draft
+📖 *BUAT PROMO*
+• Forward broadcast FGB → langsung generate!
+• Kirim gambar cover → generate dari gambar!
+• /new <judul buku>
+  Contoh: /new Atomic Habits
+  → Cari di internet → pilih hasil → isi harga → draft
+• /bulk [level]
+  Contoh: /bulk 2 atau /bulk 3
+  Level: 1=standar, 2=rekomendasi, 3=racun
+  → Forward banyak → ketik /done → proses semua
 
-*Bulk Mode:*
-/bulk [1|2|3] - Mulai bulk mode (default level 2)
-/done - Selesai collect, mulai proses
+🎨 *BUAT POSTER*
+• /poster [platform]
+  Contoh: /poster ig_story
+  Platform: ig_story, ig_square, wa_status
+  → Kirim cover² → ketik DONE → dapat poster
 
-*Research Mode (Buat dari Nol):*
-/new <judul buku> - Cari buku di internet
-/queue - Lihat antrian broadcast terjadwal
-/flush - Kirim semua antrian SEKARANG
+📅 *JADWAL*
+• /queue → lihat antrian broadcast
+• /flush → kirim semua antrian SEKARANG
+• /cancel → batalkan draft/state pending
 
-*Poster Mode:* 🎨
-/poster [platform] - Buat poster dari cover
-  - Kirim cover, reply DONE, dapat poster!
-  - Platforms: ig_story, ig_square, wa_status
-
-*Caption Mode (BARU!):* 📝
-/caption - Generate materi promosi dari gambar
-  - Kirim poster/cover → AI analyze → konfirmasi → draft!
-
-*Cara pakai (Single):*
-1. Forward broadcast FGB ke sini
-2. Bot akan generate draft dengan harga +markup
-3. Reply YES untuk kirim ke grup
-
-*Tips:*
-- JID grup format: 120363XXXXX@g.us
-- Gunakan /groups untuk lihat JID`
+⚙️ *ADMIN*
+• /status → info bot & config
+• /setmarkup <angka> → contoh: /setmarkup 25000
+• /groups → list semua grup
+• /setgroup <prod|dev> <JID>`
     });
   }
 
@@ -2246,7 +2241,18 @@ Kirim /done kalau sudah selesai.
           });
           return true;
         }
-        await this.startPosterGeneration(from);
+        // Transition to cover type selection
+        this.posterState.state = 'cover_type_selection';
+        this.posterState.timestamp = Date.now();
+        await this.sock.sendMessage(from, {
+          text: `📸 ${this.posterState.imagePaths.length} foto collected!
+
+Tiap foto adalah:
+*1* - Single cover (1 buku per foto)
+*2* - Multi cover (banyak buku per foto)
+
+Reply 1 atau 2:`
+        });
         return true;
       }
 
@@ -2290,6 +2296,35 @@ Kirim /done kalau sudah selesai.
       }
 
       return false;
+    }
+
+    // STATE: Cover type selection (1=single, 2=multi)
+    if (this.posterState.state === 'cover_type_selection') {
+      if (lowerText === '1' || lowerText === 'single') {
+        // Single cover - skip AI detection
+        this.posterState.coverType = 'single';
+        await this.startPosterGeneration(from);
+        return true;
+      }
+
+      if (lowerText === '2' || lowerText === 'multi') {
+        // Multi cover - use AI detection (default)
+        this.posterState.coverType = undefined;  // AI will detect
+        await this.startPosterGeneration(from);
+        return true;
+      }
+
+      // Check for CANCEL
+      if (lowerText === 'cancel' || lowerText === 'batal') {
+        await this.sock.sendMessage(from, { text: '❌ Poster mode dibatalkan.' });
+        this.clearPosterState();
+        return true;
+      }
+
+      await this.sock.sendMessage(from, {
+        text: '⚠️ Reply 1 (single cover) atau 2 (multi cover)'
+      });
+      return true;
     }
 
     // STATE: Preview (after generation)
@@ -2396,7 +2431,8 @@ ${this.posterState.title ? `📝 Title: ${this.posterState.title}` : ''}`
         this.posterState.platform,
         this.posterState.title,
         this.posterState.backgroundStyle,
-        this.posterState.customLayout
+        this.posterState.customLayout,
+        this.posterState.coverType  // Pass to skip AI detection
       );
 
       // Save poster locally
@@ -2473,6 +2509,26 @@ Reply *CANCEL* untuk batalkan.`
     });
 
     logger.info('Caption mode started');
+  }
+
+  /**
+   * Start caption mode with an already received image.
+   * Called when user sends image-only message (no FGB caption).
+   */
+  private async startCaptionModeWithImage(from: string, message: proto.IWebMessageInfo) {
+    // Clear any existing state
+    this.clearCaptionState();
+
+    // Initialize caption state - skip awaiting_image since we already have it
+    this.captionState = {
+      state: 'awaiting_image',  // Will transition after collectCaptionImage
+      timestamp: Date.now()
+    };
+
+    logger.info('Caption mode started with image (auto-detected)');
+
+    // Immediately process the image
+    await this.collectCaptionImage(from, message);
   }
 
   private async handleCaptionResponse(from: string, text: string, message: proto.IWebMessageInfo): Promise<boolean> {

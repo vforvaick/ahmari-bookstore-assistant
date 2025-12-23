@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **UX: Improved `/help` Command**: Redesigned with purpose-based grouping.
+  - Grouped by user intent: "Buat Promo", "Buat Poster", "Jadwal", "Admin"
+  - Added detailed argument examples for `/bulk`, `/new`, `/poster`
+  - Bahasa Indonesia friendly, removed technical jargon
+
+- **UX: Auto-detect Image-Only Messages**: No longer need `/caption` command.
+  - Send image without text → Bot auto-detects → triggers caption flow
+  - `/caption` command removed, flow is now automatic
+
+- **API Efficiency: Poster Cover Type Selection**: Eliminates Gemini Vision API call.
+  - After DONE, bot asks "1=Single or 2=Multi cover"
+  - If user selects "1", skips AI cover detection entirely
+  - **100% reduction** in poster analyzer API calls when user knows cover type
+
 - **Multi-Model Rotation Strategy**: Rate limit management for Gemini API.
   - Rotates through models FIRST: `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3-flash`
   - Then switches to next API key when all models exhausted
