@@ -17,12 +17,13 @@ class AIClient {
             },
         });
     }
-    async parse(text, mediaCount) {
+    async parse(text, mediaCount, supplier = 'fgb') {
         try {
-            logger.info('Calling AI Processor /parse endpoint');
+            logger.info(`Calling AI Processor /parse endpoint (supplier=${supplier})`);
             const response = await this.client.post('/parse', {
                 text,
                 media_count: mediaCount,
+                supplier: supplier,
             });
             logger.info('Parse successful');
             return response.data;

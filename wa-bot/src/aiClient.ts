@@ -107,12 +107,13 @@ export class AIClient {
     });
   }
 
-  async parse(text: string, mediaCount: number): Promise<ParsedBroadcast> {
+  async parse(text: string, mediaCount: number, supplier: 'fgb' | 'littlerazy' = 'fgb'): Promise<ParsedBroadcast> {
     try {
-      logger.info('Calling AI Processor /parse endpoint');
+      logger.info(`Calling AI Processor /parse endpoint (supplier=${supplier})`);
       const response = await this.client.post<ParsedBroadcast>('/parse', {
         text,
         media_count: mediaCount,
+        supplier: supplier,
       });
       logger.info('Parse successful');
       return response.data;

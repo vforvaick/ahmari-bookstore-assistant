@@ -24,6 +24,12 @@ All notable changes to this project will be documented in this file.
   - Forward flow: now has REGEN, COVER commands
   - Caption flow: now has SCHEDULE, COVER commands
 
+- **Multi-Supplier Parsing**: Support for FGB and Littlerazy suppliers.
+  - New `littlerazy_parser.py` for Littlerazy format
+  - **Supplier Selection**: When forwarding, bot asks "1 FGB, 2 Littlerazy"
+  - `/supplier` command to change parser mid-bulk
+  - Format: `TITLE FORMAT PRICE ETA MONTH EMOJI Description`
+
 - **UX: Auto-detect Image-Only Messages**: No longer need `/caption` command.
   - Send image without text → Bot auto-detects → triggers caption flow
   - `/caption` command removed, flow is now automatic

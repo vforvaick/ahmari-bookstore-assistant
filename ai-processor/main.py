@@ -8,6 +8,7 @@ import logging
 import os
 
 from parser import FGBParser
+from littlerazy_parser import LitterazyParser
 from gemini_client import GeminiClient
 from output_formatter import OutputFormatter
 from book_researcher import BookResearcher
@@ -45,7 +46,8 @@ app.add_middleware(
 )
 
 # Initialize services
-parser = FGBParser()
+fgb_parser = FGBParser()
+littlerazy_parser = LitterazyParser()
 gemini_client = GeminiClient()  # Reads API keys from environment
 formatter = OutputFormatter(price_markup=settings.price_markup)
 book_researcher = BookResearcher()  # For /research endpoint
@@ -55,6 +57,7 @@ caption_analyzer = CaptionAnalyzer()  # For /caption endpoints
 class ParseRequest(BaseModel):
     text: str
     media_count: int = 0
+    supplier: str = 'fgb'  # 'fgb' or 'littlerazy'
 
 class ConfigUpdateRequest(BaseModel):
     price_markup: Optional[int] = None
@@ -100,10 +103,16 @@ async def update_config(request: ConfigUpdateRequest):
 
 @app.post("/parse", response_model=ParsedBroadcast)
 async def parse_broadcast(request: ParseRequest):
-    """Parse FGB broadcast text into structured data"""
+    """Parse broadcast text into structured data. Supports multiple suppliers."""
     try:
-        logger.info(f"Parsing broadcast, text length: {len(request.text)}")
-        result = parser.parse(request.text, request.media_count)
+        logger.info(f"Parsing broadcast (supplier={request.supplier}), text length: {len(request.text)}")
+        
+        # Route to correct parser based on supplier
+        if request.supplier == 'littlerazy':
+            result = littlerazy_parser.parse(request.text, request.media_count)
+        else:
+            result = fgb_parser.parse(request.text, request.media_count)
+        
         logger.info(f"Parsed successfully: {result.title}")
         return result
     except Exception as e:

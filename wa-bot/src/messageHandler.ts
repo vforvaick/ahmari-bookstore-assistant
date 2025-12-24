@@ -12,9 +12,10 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // Pending state (simple in-memory for now)
 interface PendingState {
-  // State: 'level_selection' or 'draft_pending'
-  state: 'level_selection' | 'draft_pending';
-  rawText?: string;  // Raw FGB text for deferred parsing
+  // State: 'supplier_selection' | 'level_selection' | 'draft_pending'
+  state: 'supplier_selection' | 'level_selection' | 'draft_pending';
+  supplierType?: 'fgb' | 'littlerazy';  // Which supplier format to use
+  rawText?: string;  // Raw text for deferred parsing
   parsedData?: any;  // ParsedBroadcast from AI processor
   mediaPaths: string[];
   draft?: string;
@@ -35,6 +36,7 @@ interface BulkItem {
 interface BulkState {
   active: boolean;
   level: number;  // 1, 2, or 3
+  supplierType: 'fgb' | 'littlerazy';  // Which supplier format to use
   items: BulkItem[];
   startedAt: number;
   timeoutId?: ReturnType<typeof setTimeout>;
@@ -318,6 +320,10 @@ export class MessageHandler {
           await this.flushQueue(from);
           return true;
 
+        case '/supplier':
+          await this.setSupplier(from, args);
+          return true;
+
         // /poster removed (deprecated)
 
         // /caption removed - now auto-detected from image-only messages
@@ -506,6 +512,42 @@ ${ownerList}`
     });
   }
 
+  /**
+   * Set supplier type for parsing (FGB or Littlerazy)
+   */
+  private async setSupplier(from: string, args: string) {
+    const supplier = args.trim().toLowerCase();
+
+    if (supplier !== 'fgb' && supplier !== 'littlerazy') {
+      await this.sock.sendMessage(from, {
+        text: `❌ Supplier tidak dikenal.\n\nPilihan: */supplier fgb* atau */supplier littlerazy*`
+      });
+      return;
+    }
+
+    // Update bulk state if active
+    if (this.bulkState && this.bulkState.state === 'collecting') {
+      this.bulkState.supplierType = supplier as 'fgb' | 'littlerazy';
+      await this.sock.sendMessage(from, {
+        text: `✅ Supplier diubah ke *${supplier.toUpperCase()}*\n\nSemua broadcast akan diproses dengan parser ${supplier}.`
+      });
+      return;
+    }
+
+    // Update pending state if active
+    if (this.pendingState) {
+      this.pendingState.supplierType = supplier as 'fgb' | 'littlerazy';
+      await this.sock.sendMessage(from, {
+        text: `✅ Supplier diubah ke *${supplier.toUpperCase()}*`
+      });
+      return;
+    }
+
+    await this.sock.sendMessage(from, {
+      text: `ℹ️ Tidak ada mode aktif.\n\nGunakan /supplier saat bulk mode atau setelah forward broadcast.`
+    });
+  }
+
   private async setMarkup(from: string, args: string) {
     const markup = parseInt(args.trim(), 10);
 
@@ -640,6 +682,39 @@ Gunakan /groups untuk lihat JID yang valid.`
       return false;
     }
 
+    // STATE 0: Supplier selection - waiting for 1 (FGB) or 2 (Littlerazy)
+    if (this.pendingState.state === 'supplier_selection') {
+      // Check for supplier selection
+      if (text.trim() === '1') {
+        this.pendingState.supplierType = 'fgb';
+        this.pendingState.state = 'level_selection';
+        this.saveState(from, 'pending', this.pendingState);
+        await this.showLevelSelection(from);
+        return true;
+      }
+
+      if (text.trim() === '2') {
+        this.pendingState.supplierType = 'littlerazy';
+        this.pendingState.state = 'level_selection';
+        this.saveState(from, 'pending', this.pendingState);
+        await this.showLevelSelection(from);
+        return true;
+      }
+
+      // Check for CANCEL
+      if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+        await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
+        this.clearPendingState(from);
+        return true;
+      }
+
+      // Invalid response - remind user
+      await this.sock.sendMessage(from, {
+        text: '⚠️ Balas dengan *1* (FGB) atau *2* (Littlerazy)'
+      });
+      return true;
+    }
+
     // STATE 1: Level selection - waiting for 1, 2, or 3
     if (this.pendingState.state === 'level_selection') {
       // Check for numeric level response
@@ -716,6 +791,35 @@ Gunakan /groups untuk lihat JID yang valid.`
     return false;
   }
 
+  /**
+   * Show level selection prompt (called after supplier is selected)
+   */
+  private async showLevelSelection(from: string) {
+    if (!this.pendingState) return;
+
+    const levelSelectionMessage = `📚 *Supplier: ${this.pendingState.supplierType?.toUpperCase() || 'FGB'}*
+
+Pilih level rekomendasi:
+
+1️⃣ *Standard* - Informatif, light hard-sell
+2️⃣ *Recommended* - Persuasif, medium hard-sell  
+3️⃣ *Top Pick* ⭐ - Racun belanja! + marker "Top Pick Ahmari Bookstore"
+
+---
+Balas dengan angka *1*, *2*, atau *3*`;
+
+    if (this.pendingState.mediaPaths.length > 0) {
+      await this.sock.sendMessage(from, {
+        image: { url: this.pendingState.mediaPaths[0] },
+        caption: levelSelectionMessage,
+      });
+    } else {
+      await this.sock.sendMessage(from, {
+        text: levelSelectionMessage,
+      });
+    }
+  }
+
   private async generateDraftWithLevel(from: string, level: number) {
     if (!this.pendingState || !this.pendingState.rawText) {
       await this.sock.sendMessage(from, { text: '❌ Error: data tidak ditemukan.' });
@@ -729,7 +833,8 @@ Gunakan /groups untuk lihat JID yang valid.`
       // Parse NOW (after level selection to save 1 API call)
       const parsedData = await this.aiClient.parse(
         this.pendingState.rawText,
-        this.pendingState.mediaPaths.length
+        this.pendingState.mediaPaths.length,
+        this.pendingState.supplierType || 'fgb'
       );
 
       logger.info(`Parse successful - format: ${parsedData.format || 'unknown'}`);
@@ -959,39 +1064,38 @@ Gunakan /groups untuk lihat JID yang valid.`
         }
       }
 
-      // Store pending state for level selection (NO parsing yet to save tokens)
+      // Store pending state for SUPPLIER SELECTION first
       this.pendingState = {
-        state: 'level_selection',
+        state: 'supplier_selection',
         rawText: detection.text,  // Store raw text for later parsing
         mediaPaths: [...mediaPaths],
         timestamp: Date.now()
       };
       this.saveState(from, 'pending', this.pendingState);  // Persist to DB
 
-      // Show level selection with generic message
-      const levelSelectionMessage = `📚 *Buku Baru Terdeteksi*
+      // Show supplier selection prompt
+      const supplierSelectionMessage = `📦 *Broadcast Terdeteksi!*
 
-Pilih level rekomendasi:
+Dari supplier mana?
 
-1️⃣ *Standard* - Informatif, light hard-sell
-2️⃣ *Recommended* - Persuasif, medium hard-sell  
-3️⃣ *Top Pick* ⭐ - Racun belanja! + marker "Top Pick Ahmari Bookstore"
+1️⃣ *FGB* (Flying Great Books)
+2️⃣ *Littlerazy*
 
 ---
-Balas dengan angka *1*, *2*, atau *3*`;
+Balas dengan angka *1* atau *2*`;
 
       if (mediaPaths.length > 0) {
         await this.sock.sendMessage(from, {
           image: { url: mediaPaths[0] },
-          caption: levelSelectionMessage,
+          caption: supplierSelectionMessage,
         });
       } else {
         await this.sock.sendMessage(from, {
-          text: levelSelectionMessage,
+          text: supplierSelectionMessage,
         });
       }
 
-      logger.info('Level selection prompt sent');
+      logger.info('Supplier selection prompt sent');
 
       // DON'T cleanup media yet - wait for YES response
 
@@ -1029,10 +1133,11 @@ Balas dengan angka *1*, *2*, atau *3*`;
     this.clearPendingState(from);
     this.clearBulkState(from);
 
-    // Initialize bulk state
+    // Initialize bulk state with default FGB supplier (can be changed later)
     this.bulkState = {
       active: true,
       level,
+      supplierType: 'fgb',  // Default to FGB, user can change with /supplier
       items: [],
       startedAt: Date.now(),
       state: 'collecting'
@@ -1049,7 +1154,10 @@ Balas dengan angka *1*, *2*, atau *3*`;
     await this.sock.sendMessage(from, {
       text: `📦 *Bulk Mode Aktif* (Level ${level}: ${levelNames[level]})
 
-Silakan forward broadcast FGB.
+Supplier: *FGB* (default)
+💡 Kirim */supplier littlerazy* untuk ganti ke Littlerazy
+
+Silakan forward broadcast.
 Bot akan mengumpulkan semua message secara diam-diam.
 
 Kirim /done kalau sudah selesai.
@@ -1171,10 +1279,11 @@ Kirim /done kalau sudah selesai.
       const item = this.bulkState.items[i];
 
       try {
-        // Parse
+        // Parse with supplier type
         const parsedData = await this.aiClient.parse(
           item.rawText,
-          item.mediaPaths.length
+          item.mediaPaths.length,
+          this.bulkState.supplierType
         );
         item.parsedData = parsedData;
 

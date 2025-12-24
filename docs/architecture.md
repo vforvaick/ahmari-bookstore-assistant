@@ -54,7 +54,7 @@ graph TD
 ### 2. AI Processor Service (Python + FastAPI)
 - **Role**: Logic core for parsing, broadcast generation, and image processing.
 - **Responsibilities**:
-  - Parses raw broadcast text using flexible YAML-based rules.
+  - Parses raw broadcast text using **Multi-Supplier System** (FGB & Littlerazy).
   - **Hybrid Approach** (v1.3.0):
     - **Rule-based** (`output_formatter.py`): Price markup, template structure, link cleanup
     - **AI-based** (`gemini_client.py`): Review paragraph generation, publisher guessing
