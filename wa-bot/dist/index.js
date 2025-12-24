@@ -7,6 +7,7 @@ const dotenv_1 = require("dotenv");
 const pino_1 = __importDefault(require("pino"));
 const whatsapp_1 = require("./whatsapp");
 const aiClient_1 = require("./aiClient");
+const stateStore_1 = require("./stateStore");
 const path_1 = __importDefault(require("path"));
 (0, dotenv_1.config)();
 const logger = (0, pino_1.default)({ level: 'info' });
@@ -25,6 +26,10 @@ async function main() {
     else {
         logger.info('✓ AI Processor is healthy');
     }
+    // Initialize StateStore for conversation state persistence
+    const dbPath = process.env.DATABASE_PATH || path_1.default.resolve('./data/bookstore.db');
+    (0, stateStore_1.initStateStore)(dbPath);
+    logger.info('✓ StateStore initialized');
     // Initialize WhatsApp client
     const sessionsPath = path_1.default.resolve('./sessions');
     const waClient = new whatsapp_1.WhatsAppClient(sessionsPath);

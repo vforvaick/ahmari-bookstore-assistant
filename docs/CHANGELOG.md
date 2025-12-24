@@ -10,6 +10,13 @@ All notable changes to this project will be documented in this file.
   - Added detailed argument examples for `/bulk`, `/new`, `/poster`
   - Bahasa Indonesia friendly, removed technical jargon
 
+- **Conversation State Persistence**: States survive bot restarts.
+  - New `stateStore.ts` module persists states to SQLite
+  - All 4 state types (pending, bulk, research, caption) now persist
+  - Multi-user support (states keyed by user JID)
+  - Auto-cleanup of expired states (10 min TTL)
+  - **Benefit**: No more lost drafts/flows on deploy or crash
+
 - **UX: Auto-detect Image-Only Messages**: No longer need `/caption` command.
   - Send image without text → Bot auto-detects → triggers caption flow
   - `/caption` command removed, flow is now automatic

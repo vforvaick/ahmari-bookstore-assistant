@@ -141,14 +141,13 @@ CREATE TABLE queue (
 ### Conversation State
 Tracks user interaction flow.
 ```sql
-CREATE TABLE conversation_state (
-  user_id TEXT PRIMARY KEY,
-  message_id TEXT,
-  status TEXT,                 -- awaiting_choice, awaiting_edit
-  draft_text TEXT,
-  original_media TEXT,         -- JSON array
-  edited_text TEXT,
-  created_at DATETIME
+CREATE TABLE conversation_states (
+  user_jid TEXT NOT NULL,
+  state_type TEXT NOT NULL,
+  state_data TEXT NOT NULL,    -- JSON-serialized state
+  expires_at DATETIME NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_jid, state_type)
 );
 ```
 

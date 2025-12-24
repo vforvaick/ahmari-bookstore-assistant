@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MessageHandler = void 0;
 const pino_1 = __importDefault(require("pino"));
 const detector_1 = require("./detector");
+const stateStore_1 = require("./stateStore");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const fs_2 = require("fs");
@@ -42,6 +43,38 @@ class MessageHandler {
             fs_1.default.mkdirSync(mediaPath, { recursive: true });
         }
     }
+    // ==================== STATE PERSISTENCE HELPERS ====================
+    /**
+     * Load all states for a user from persistent storage
+     * Call at the beginning of handleMessage
+     */
+    loadUserStates(userJid) {
+        const store = (0, stateStore_1.getStateStore)();
+        this.pendingState = store.getState(userJid, 'pending');
+        this.bulkState = store.getState(userJid, 'bulk');
+        this.researchState = store.getState(userJid, 'research');
+        this.captionState = store.getState(userJid, 'caption');
+    }
+    /**
+     * Save a specific state type to persistent storage
+     * @param ttlMinutes - Time to live in minutes (default 10)
+     */
+    saveState(userJid, type, state, ttlMinutes = 10) {
+        const store = (0, stateStore_1.getStateStore)();
+        if (state) {
+            store.setState(userJid, type, state, ttlMinutes);
+        }
+        else {
+            store.clearState(userJid, type);
+        }
+    }
+    /**
+     * Clear a specific state type
+     */
+    clearPersistedState(userJid, type) {
+        const store = (0, stateStore_1.getStateStore)();
+        store.clearState(userJid, type);
+    }
     async handleMessage(message) {
         try {
             // Get sender info
@@ -57,6 +90,8 @@ class MessageHandler {
                 logger.debug(`Ignoring message from non-owner: ${from}`);
                 return;
             }
+            // Load persisted states for this user (survives restarts)
+            this.loadUserStates(from);
             logger.info(`Processing message from owner: ${from}`);
             // Extract message text
             const messageText = this.extractMessageText(message);
@@ -148,7 +183,7 @@ class MessageHandler {
                     await this.setTargetGroup(from, args);
                     return true;
                 case '/cancel':
-                    this.clearPendingState();
+                    this.clearPendingState(from);
                     await this.sock.sendMessage(from, { text: '❌ Pending state cleared.' });
                     return true;
                 case '/setmarkup':
@@ -455,7 +490,7 @@ Gunakan /groups untuk lihat JID yang valid.`
         // Check if state is expired (5 minutes)
         if (Date.now() - this.pendingState.timestamp > 5 * 60 * 1000) {
             logger.info('Pending state expired');
-            this.clearPendingState();
+            this.clearPendingState(from);
             return false;
         }
         // STATE 1: Level selection - waiting for 1, 2, or 3
@@ -469,7 +504,7 @@ Gunakan /groups untuk lihat JID yang valid.`
             // Check for CANCEL
             if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
                 await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
-                this.clearPendingState();
+                this.clearPendingState(from);
                 return true;
             }
             // Invalid response - remind user
@@ -500,13 +535,13 @@ Gunakan /groups untuk lihat JID yang valid.`
                 await this.sock.sendMessage(from, {
                     text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
                 });
-                this.clearPendingState();
+                this.clearPendingState(from);
                 return true;
             }
             // Check for CANCEL response
             if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
                 await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
-                this.clearPendingState();
+                this.clearPendingState(from);
                 return true;
             }
         }
@@ -515,7 +550,7 @@ Gunakan /groups untuk lihat JID yang valid.`
     async generateDraftWithLevel(from, level) {
         if (!this.pendingState || !this.pendingState.rawText) {
             await this.sock.sendMessage(from, { text: '❌ Error: data tidak ditemukan.' });
-            this.clearPendingState();
+            this.clearPendingState(from);
             return;
         }
         try {
@@ -546,7 +581,7 @@ Gunakan /groups untuk lihat JID yang valid.`
         catch (error) {
             logger.error('Error generating draft:', error);
             await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
-            this.clearPendingState();
+            this.clearPendingState(from);
         }
     }
     async sendBroadcast(from, targetJid) {
@@ -563,7 +598,7 @@ Gunakan /groups untuk lihat JID yang valid.`
             await this.sock.sendMessage(from, {
                 text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
             });
-            this.clearPendingState();
+            this.clearPendingState(from);
             return;
         }
         try {
@@ -605,7 +640,7 @@ Gunakan /groups untuk lihat JID yang valid.`
             });
         }
         finally {
-            this.clearPendingState();
+            this.clearPendingState(from);
         }
     }
     async scheduleBroadcast(from) {
@@ -615,7 +650,7 @@ Gunakan /groups untuk lihat JID yang valid.`
         });
         // Don't clear pending state so user can still reply YES
     }
-    clearPendingState() {
+    clearPendingState(userJid) {
         if (this.pendingState) {
             // Cleanup any remaining media files
             for (const filepath of this.pendingState.mediaPaths) {
@@ -630,6 +665,7 @@ Gunakan /groups untuk lihat JID yang valid.`
                 }
             }
             this.pendingState = null;
+            this.clearPersistedState(userJid, 'pending'); // Persist to DB
         }
     }
     async processFGBBroadcast(message, detection) {
@@ -639,7 +675,7 @@ Gunakan /groups untuk lihat JID yang valid.`
             return;
         }
         // Clear any existing pending state
-        this.clearPendingState();
+        this.clearPendingState(from);
         const mediaPaths = [];
         try {
             // Send processing message (friendly progress info)
@@ -689,6 +725,7 @@ Gunakan /groups untuk lihat JID yang valid.`
                 mediaPaths: [...mediaPaths],
                 timestamp: Date.now()
             };
+            this.saveState(from, 'pending', this.pendingState); // Persist to DB
             // Show level selection with generic message
             const levelSelectionMessage = `📚 *Buku Baru Terdeteksi*
 
@@ -742,8 +779,8 @@ Balas dengan angka *1*, *2*, atau *3*`;
             }
         }
         // Clear any existing states
-        this.clearPendingState();
-        this.clearBulkState();
+        this.clearPendingState(from);
+        this.clearBulkState(from);
         // Initialize bulk state
         this.bulkState = {
             active: true,
@@ -845,7 +882,7 @@ Kirim /done kalau sudah selesai.
             await this.sock.sendMessage(from, {
                 text: '❌ Tidak ada broadcast yang dikumpulkan. Bulk mode dibatalkan.'
             });
-            this.clearBulkState();
+            this.clearBulkState(from);
             return;
         }
         await this.sock.sendMessage(from, {
@@ -887,7 +924,7 @@ Kirim /done kalau sudah selesai.
             await this.sock.sendMessage(from, {
                 text: '❌ Semua broadcast gagal diproses. Bulk mode dibatalkan.'
             });
-            this.clearBulkState();
+            this.clearBulkState(from);
             return;
         }
         // Generate and send preview
@@ -974,7 +1011,7 @@ Kirim /done kalau sudah selesai.
         // CANCEL
         if (normalizedText.includes('cancel') || normalizedText.includes('batal')) {
             await this.sock.sendMessage(from, { text: '❌ Bulk mode dibatalkan.' });
-            this.clearBulkState();
+            this.clearBulkState(from);
             return true;
         }
         return false;
@@ -989,7 +1026,7 @@ Kirim /done kalau sudah selesai.
                     text: '❌ TARGET_GROUP_JID belum di-set.'
                 });
             }
-            this.clearBulkState();
+            this.clearBulkState(from);
             return;
         }
         this.bulkState.state = 'sending';
@@ -1029,7 +1066,7 @@ Kirim /done kalau sudah selesai.
         await this.sock.sendMessage(from, {
             text: `✅ ${sentCount}/${successItems.length} broadcast terkirim ke grup ${groupType}!`
         });
-        this.clearBulkState();
+        this.clearBulkState(from);
     }
     async scheduleBulkBroadcasts(from, intervalMinutes, targetJid) {
         // Use provided targetJid or default to production group
@@ -1041,7 +1078,7 @@ Kirim /done kalau sudah selesai.
                     text: '❌ TARGET_GROUP_JID belum di-set.'
                 });
             }
-            this.clearBulkState();
+            this.clearBulkState(from);
             return;
         }
         const successItems = this.bulkState.items.filter(item => item.generated && !item.generated.error);
@@ -1106,7 +1143,7 @@ Kirim /done kalau sudah selesai.
         // We need to keep media paths accessible
         this.bulkState = null;
     }
-    clearBulkState() {
+    clearBulkState(userJid) {
         if (this.bulkState) {
             // Clear timeout
             if (this.bulkState.timeoutId) {
@@ -1127,6 +1164,7 @@ Kirim /done kalau sudah selesai.
                 }
             }
             this.bulkState = null;
+            this.clearPersistedState(userJid, 'bulk'); // Persist to DB
         }
     }
     // ==================== RESEARCH MODE METHODS (/new) ====================
@@ -1138,9 +1176,9 @@ Kirim /done kalau sudah selesai.
             return;
         }
         // Clear any existing states
-        this.clearPendingState();
-        this.clearBulkState();
-        this.clearResearchState();
+        this.clearPendingState(from);
+        this.clearBulkState(from);
+        this.clearResearchState(from);
         try {
             await this.sock.sendMessage(from, {
                 text: `🔍 Mencari: "${query}"...\n\nMohon tunggu...`
@@ -1217,7 +1255,7 @@ Kirim /done kalau sudah selesai.
             await this.sock.sendMessage(from, {
                 text: `❌ Gagal mencari buku: ${error.message}\n\nPastikan GOOGLE_SEARCH_API_KEY sudah dikonfigurasi.`
             });
-            this.clearResearchState();
+            this.clearResearchState(from);
         }
     }
     async handleResearchResponse(from, text) {
@@ -1226,7 +1264,7 @@ Kirim /done kalau sudah selesai.
         // Check if state is expired (10 minutes for research)
         if (Date.now() - this.researchState.timestamp > 10 * 60 * 1000) {
             logger.info('Research state expired');
-            this.clearResearchState();
+            this.clearResearchState(from);
             return false;
         }
         // STATE 1: Waiting for book selection (number)
@@ -1378,7 +1416,7 @@ Kirim /done kalau sudah selesai.
             // Check for cancel
             if (text.includes('cancel') || text.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
-                this.clearResearchState();
+                this.clearResearchState(from);
                 return true;
             }
             // Invalid selection
@@ -1392,7 +1430,7 @@ Kirim /done kalau sudah selesai.
             // Check for cancel
             if (text.includes('cancel') || text.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
-                this.clearResearchState();
+                this.clearResearchState(from);
                 return true;
             }
             // Parse details: "350000 hb jan 26 close 25 dec"
@@ -1461,14 +1499,14 @@ Kirim /done kalau sudah selesai.
                     await this.sock.sendMessage(from, {
                         text: `❌ Gagal generate draft: ${error.message}`
                     });
-                    this.clearResearchState();
+                    this.clearResearchState(from);
                     return true;
                 }
             }
             // Check for cancel
             if (text.includes('cancel') || text.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
-                this.clearResearchState();
+                this.clearResearchState(from);
                 return true;
             }
             await this.sock.sendMessage(from, {
@@ -1612,7 +1650,7 @@ Kirim /done kalau sudah selesai.
                 await this.sock.sendMessage(from, {
                     text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu kirim ulang ke saya!'
                 });
-                this.clearResearchState();
+                this.clearResearchState(from);
                 return true;
             }
             // 3. COVER - search for new cover images
@@ -1682,7 +1720,7 @@ Kirim /done kalau sudah selesai.
             // 7. CANCEL
             if (mappedText === 'cancel' || mappedText.includes('batal') || mappedText.includes('skip')) {
                 await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
-                this.clearResearchState();
+                this.clearResearchState(from);
                 return true;
             }
         }
@@ -1743,7 +1781,7 @@ Kirim /done kalau sudah selesai.
             await this.sock.sendMessage(from, {
                 text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
             });
-            this.clearResearchState();
+            this.clearResearchState(from);
             return;
         }
         try {
@@ -1773,10 +1811,10 @@ Kirim /done kalau sudah selesai.
             });
         }
         finally {
-            this.clearResearchState();
+            this.clearResearchState(from);
         }
     }
-    clearResearchState() {
+    clearResearchState(userJid) {
         if (this.researchState) {
             // Cleanup image if exists
             if (this.researchState.imagePath) {
@@ -1791,13 +1829,14 @@ Kirim /done kalau sudah selesai.
                 }
             }
             this.researchState = null;
+            this.clearPersistedState(userJid, 'research'); // Persist to DB
         }
     }
     // ==================== POSTER GENERATION FLOW REMOVED (DEPRECATED) ====================
     // ==================== CAPTION GENERATION FLOW ====================
     async startCaptionMode(from) {
         // Clear any existing caption state
-        this.clearCaptionState();
+        this.clearCaptionState(from);
         // Initialize caption state
         this.captionState = {
             state: 'awaiting_image',
@@ -1821,7 +1860,7 @@ Reply *CANCEL* untuk batalkan.`
      */
     async startCaptionModeWithImage(from, message) {
         // Clear any existing state
-        this.clearCaptionState();
+        this.clearCaptionState(from);
         // Initialize caption state - skip awaiting_image since we already have it
         this.captionState = {
             state: 'awaiting_image', // Will transition after collectCaptionImage
@@ -1837,14 +1876,14 @@ Reply *CANCEL* untuk batalkan.`
         // Check if state is expired (10 minutes)
         if (Date.now() - this.captionState.timestamp > 10 * 60 * 1000) {
             logger.info('Caption state expired');
-            this.clearCaptionState();
+            this.clearCaptionState(from);
             return false;
         }
         const lowerText = text.toLowerCase().trim();
         // Check for CANCEL at any state
         if (lowerText === 'cancel' || lowerText === 'batal') {
             await this.sock.sendMessage(from, { text: '❌ Caption mode dibatalkan.' });
-            this.clearCaptionState();
+            this.clearCaptionState(from);
             return true;
         }
         // STATE: Awaiting image
@@ -1920,7 +1959,7 @@ Pilih level rekomendasi:
                 await this.sock.sendMessage(from, {
                     text: '✏️ Draft di atas. Edit manual lalu kirim ulang kalau perlu.'
                 });
-                this.clearCaptionState();
+                this.clearCaptionState(from);
                 return true;
             }
             // REGEN
@@ -2000,7 +2039,7 @@ Contoh:
             await this.sock.sendMessage(from, {
                 text: `❌ Gagal analyze gambar: ${error.message}`
             });
-            this.clearCaptionState();
+            this.clearCaptionState(from);
         }
     }
     parseCaptionDetails(input) {
@@ -2051,7 +2090,7 @@ Contoh:
     async generateCaptionDraft(from, level) {
         if (!this.captionState || !this.captionState.analysis || !this.captionState.details) {
             await this.sock.sendMessage(from, { text: '❌ Error: data tidak lengkap.' });
-            this.clearCaptionState();
+            this.clearCaptionState(from);
             return;
         }
         try {
@@ -2127,7 +2166,7 @@ Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
             await this.sock.sendMessage(from, {
                 text: `❌ Gagal generate caption: ${error.message}`
             });
-            this.clearCaptionState();
+            this.clearCaptionState(from);
         }
     }
     async sendCaptionBroadcast(from, targetJid) {
@@ -2141,7 +2180,7 @@ Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
             await this.sock.sendMessage(from, {
                 text: '❌ TARGET_GROUP_JID belum di-set.'
             });
-            this.clearCaptionState();
+            this.clearCaptionState(from);
             return;
         }
         try {
@@ -2171,10 +2210,10 @@ Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
             });
         }
         finally {
-            this.clearCaptionState();
+            this.clearCaptionState(from);
         }
     }
-    clearCaptionState() {
+    clearCaptionState(userJid) {
         if (this.captionState) {
             // Cleanup image if exists
             if (this.captionState.imagePath) {
@@ -2189,6 +2228,7 @@ Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
                 }
             }
             this.captionState = null;
+            this.clearPersistedState(userJid, 'caption'); // Persist to DB
         }
     }
 }

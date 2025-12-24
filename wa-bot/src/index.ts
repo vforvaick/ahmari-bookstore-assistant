@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 import pino from 'pino';
 import { WhatsAppClient } from './whatsapp';
 import { AIClient } from './aiClient';
+import { initStateStore } from './stateStore';
 import path from 'path';
 
 config();
@@ -24,6 +25,11 @@ async function main() {
   } else {
     logger.info('✓ AI Processor is healthy');
   }
+
+  // Initialize StateStore for conversation state persistence
+  const dbPath = process.env.DATABASE_PATH || path.resolve('./data/bookstore.db');
+  initStateStore(dbPath);
+  logger.info('✓ StateStore initialized');
 
   // Initialize WhatsApp client
   const sessionsPath = path.resolve('./sessions');

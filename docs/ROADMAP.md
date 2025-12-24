@@ -11,10 +11,10 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
   - Phase 1-4 complete: Core, AI Background, API, WA Bot
   - **Ref**: Session 23e1df10-1953-48ff-8c81-ff6ae009deb2
 
-- [ ] **Conversation State Persistence** (Database Integration)
-  - **Why**: Currently state is in-memory; needed for robust workflow reliability.
-  - **Status**: Blocked by Implementation.
-  - **Ref**: Task 11 in original plan.
+- [x] **Conversation State Persistence** ✅ 2025-12-24
+  - States persist to SQLite; survives restarts
+  - Multi-user support, 10-min TTL, auto-cleanup
+  - **Ref**: Session 29ef2c93-499e-438a-ace8-b3a60ab3bea8
 
 - [ ] **Deployment Documentation**
   - **Why**: Ensure reproducible deployments on VPS.
