@@ -19,6 +19,18 @@ All notable changes to this project will be documented in this file.
   - If user selects "1", skips AI cover detection entirely
   - **100% reduction** in poster analyzer API calls when user knows cover type
 
+### Deprecated/Removed
+- **telegram-bot service**: Removed entire service (was never configured)
+  - Deleted `telegram-bot/` directory
+  - Removed from `docker-compose.yml`
+  - Saves 128MB RAM on VPS
+
+- **/poster command**: Removed poster generation system
+  - Deleted `ai-processor/poster/` module (~60KB code)
+  - Removed `/poster/generate` and `/poster/options` endpoints
+  - Removed `/poster` command and all poster methods from WA bot
+  - **Saves ~500 lines of code, reduces complexity**
+
 - **Multi-Model Rotation Strategy**: Rate limit management for Gemini API.
   - Rotates through models FIRST: `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3-flash`
   - Then switches to next API key when all models exhausted

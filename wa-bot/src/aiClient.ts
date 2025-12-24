@@ -64,20 +64,7 @@ export interface ResearchGenerateRequest {
   userEdit?: string;  // User feedback/edit instruction for regeneration
 }
 
-// ============== Poster Generator Interfaces ==============
-
-export interface PosterOptions {
-  platforms: Array<{
-    id: string;
-    name: string;
-    dimensions: string;
-  }>;
-  backgrounds: Array<{
-    id: string;
-    name: string;
-    description: string;
-  }>;
-}
+// ============== Poster Generator Interfaces Removed (deprecated) ==============
 
 // ============== Caption Generator Interfaces ==============
 
@@ -345,65 +332,7 @@ export class AIClient {
     }
   }
 
-  // ============== Poster Generator Methods ==============
-
-  async getPosterOptions(): Promise<PosterOptions> {
-    try {
-      logger.info('Getting poster options');
-      const response = await this.client.get<PosterOptions>('/poster/options');
-      return response.data;
-    } catch (error: any) {
-      logger.error('Get poster options failed:', error.message);
-      throw new Error(`Failed to get poster options: ${error.message}`);
-    }
-  }
-
-  async generatePoster(
-    imagePaths: string[],
-    platform: string = 'ig_story',
-    title?: string,
-    backgroundStyle: string = 'gradient',
-    customLayout?: string,
-    coverType?: string  // 'single' or undefined - skips AI detection if set
-  ): Promise<Buffer> {
-    try {
-      logger.info(`Generating poster with ${imagePaths.length} images, platform=${platform}, coverType=${coverType}`);
-
-      const FormData = require('form-data');
-      const fs = require('fs');
-      const formData = new FormData();
-
-      // Add images
-      for (const imagePath of imagePaths) {
-        formData.append('images', fs.createReadStream(imagePath));
-      }
-
-      // Add parameters as query string
-      const params = new URLSearchParams({
-        platform,
-        background_style: backgroundStyle,
-      });
-      if (title) params.append('title', title);
-      if (customLayout) params.append('custom_layout', customLayout);
-      if (coverType) params.append('cover_type', coverType);
-
-      const response = await this.client.post(
-        `/poster/generate?${params.toString()}`,
-        formData,
-        {
-          headers: formData.getHeaders(),
-          responseType: 'arraybuffer',
-          timeout: 120000, // 2 minutes for poster generation
-        }
-      );
-
-      logger.info('Poster generated successfully');
-      return Buffer.from(response.data);
-    } catch (error: any) {
-      logger.error('Poster generation failed:', error.message);
-      throw new Error(`Poster generation failed: ${error.message}`);
-    }
-  }
+  // ============== Poster Generator Methods Removed (deprecated) ==============
 
   // ============== Caption Generator Methods ==============
 

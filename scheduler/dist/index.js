@@ -53,6 +53,8 @@ class QueueScheduler {
                 return;
             }
             logger.info(`Processing queued broadcast: ${next.title} (ID: ${next.id})`);
+            // TODO: Implement WhatsApp broadcast via wa-bot API
+            // Telegram service has been deprecated
             // TODO: Send broadcast to WhatsApp group
             // For now, just mark as sent
             const updateQueue = this.db.prepare(`

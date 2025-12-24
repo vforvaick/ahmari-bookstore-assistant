@@ -63,19 +63,7 @@ interface ResearchState {
   timestamp: number;
 }
 
-// Poster state for /poster command (poster generation flow)
-interface PosterState {
-  state: 'collecting' | 'cover_type_selection' | 'platform_selection' | 'background_selection' | 'title_input' | 'generating' | 'preview';
-  imagePaths: string[];  // Collected cover images
-  platform?: string;  // Selected platform preset
-  backgroundStyle?: string;  // Selected background style
-  title?: string;  // Optional poster title
-  customLayout?: string;  // Custom layout like "3-3-3"
-  posterPath?: string;  // Generated poster path
-  coverType?: string;  // 'single' - skips AI detection
-  timestamp: number;
-}
-
+// PosterState removed (deprecated)
 // Caption state for /caption command (generate promo text from image)
 interface CaptionState {
   state: 'awaiting_image' | 'awaiting_details' | 'level_selection' | 'draft_pending';
@@ -100,7 +88,7 @@ export class MessageHandler {
   private pendingState: PendingState | null = null;
   private bulkState: BulkState | null = null;
   private researchState: ResearchState | null = null;  // For /new command
-  private posterState: PosterState | null = null;  // For /poster command
+  // posterState removed (deprecated)
   private captionState: CaptionState | null = null;  // For /caption command
   private targetGroupJid: string | null;
   private devGroupJid: string | null;
@@ -202,11 +190,7 @@ export class MessageHandler {
         if (handled) return;
       }
 
-      // Check for poster state responses (/poster flow)
-      if (this.posterState) {
-        const handled = await this.handlePosterResponse(from, messageText, message);
-        if (handled) return;
-      }
+      // posterState check removed (deprecated)
 
       // Check for caption state responses (/caption flow)
       if (this.captionState) {
@@ -294,9 +278,7 @@ export class MessageHandler {
           await this.flushQueue(from);
           return true;
 
-        case '/poster':
-          await this.startPosterMode(from, args);
-          return true;
+        // /poster removed (deprecated)
 
         // /caption removed - now auto-detected from image-only messages
 
@@ -325,11 +307,7 @@ export class MessageHandler {
   Level: 1=standar, 2=rekomendasi, 3=racun
   → Forward banyak → ketik /done → proses semua
 
-🎨 *BUAT POSTER*
-• /poster [platform]
-  Contoh: /poster ig_story
-  Platform: ig_story, ig_square, wa_status
-  → Kirim cover² → ketik DONE → dapat poster
+
 
 📅 *JADWAL*
 • /queue → lihat antrian broadcast
@@ -2182,308 +2160,7 @@ Kirim /done kalau sudah selesai.
     }
   }
 
-  // ==================== POSTER GENERATION FLOW ====================
-
-  private async startPosterMode(from: string, args: string) {
-    // Clear any existing state
-    this.clearPosterState();
-
-    // Parse args for platform preset
-    const platform = args.trim() || 'ig_story';
-
-    // Initialize poster state
-    this.posterState = {
-      state: 'collecting',
-      imagePaths: [],
-      platform,
-      backgroundStyle: 'gradient',
-      timestamp: Date.now()
-    };
-
-    // Send instructions
-    await this.sock.sendMessage(from, {
-      text: `🎨 *POSTER MODE STARTED*
-
-📸 *Kirim gambar cover buku* (1-25 foto)
-✅ Selesai kirim foto? Reply *DONE*
-
-*Platform:* ${platform} (1080x1920)
-*Background:* gradient (default)
-
-*Tips:*
-• Bisa kirim foto satu-satu atau sekaligus
-• Reply CANCEL untuk batalkan
-• Reply BG untuk pilih background lain`
-    });
-
-    logger.info(`Poster mode started, platform=${platform}`);
-  }
-
-  private async handlePosterResponse(from: string, text: string, message: proto.IWebMessageInfo): Promise<boolean> {
-    if (!this.posterState) return false;
-
-    // Check if state is expired (10 minutes)
-    if (Date.now() - this.posterState.timestamp > 10 * 60 * 1000) {
-      logger.info('Poster state expired');
-      this.clearPosterState();
-      return false;
-    }
-
-    const lowerText = text.toLowerCase().trim();
-
-    // STATE: Collecting images
-    if (this.posterState.state === 'collecting') {
-      // Check for DONE
-      if (lowerText === 'done' || lowerText === 'selesai') {
-        if (this.posterState.imagePaths.length === 0) {
-          await this.sock.sendMessage(from, {
-            text: '⚠️ Belum ada gambar yang dikirim. Kirim cover buku dulu ya!'
-          });
-          return true;
-        }
-        // Transition to cover type selection
-        this.posterState.state = 'cover_type_selection';
-        this.posterState.timestamp = Date.now();
-        await this.sock.sendMessage(from, {
-          text: `📸 ${this.posterState.imagePaths.length} foto collected!
-
-Tiap foto adalah:
-*1* - Single cover (1 buku per foto)
-*2* - Multi cover (banyak buku per foto)
-
-Reply 1 atau 2:`
-        });
-        return true;
-      }
-
-      // Check for CANCEL
-      if (lowerText === 'cancel' || lowerText === 'batal') {
-        await this.sock.sendMessage(from, { text: '❌ Poster mode dibatalkan.' });
-        this.clearPosterState();
-        return true;
-      }
-
-      // Check for BG (background selection)
-      if (lowerText === 'bg' || lowerText === 'background') {
-        await this.showBackgroundOptions(from);
-        return true;
-      }
-
-      // Check for TITLE
-      if (lowerText.startsWith('title ') || lowerText.startsWith('judul ')) {
-        this.posterState.title = text.substring(text.indexOf(' ') + 1);
-        await this.sock.sendMessage(from, {
-          text: `✅ Title set: "${this.posterState.title}"`
-        });
-        return true;
-      }
-
-      // Check if message has image
-      const content = message.message;
-      if (content?.imageMessage) {
-        await this.collectPosterImage(from, message);
-        return true;
-      }
-
-      // Background selection shortcuts
-      const bgOptions = ['gradient', 'stripes', 'solid', 'ai_creative'];
-      if (bgOptions.includes(lowerText)) {
-        this.posterState.backgroundStyle = lowerText;
-        await this.sock.sendMessage(from, {
-          text: `✅ Background: ${lowerText}\n\nLanjut kirim foto, atau DONE jika sudah.`
-        });
-        return true;
-      }
-
-      return false;
-    }
-
-    // STATE: Cover type selection (1=single, 2=multi)
-    if (this.posterState.state === 'cover_type_selection') {
-      if (lowerText === '1' || lowerText === 'single') {
-        // Single cover - skip AI detection
-        this.posterState.coverType = 'single';
-        await this.startPosterGeneration(from);
-        return true;
-      }
-
-      if (lowerText === '2' || lowerText === 'multi') {
-        // Multi cover - use AI detection (default)
-        this.posterState.coverType = undefined;  // AI will detect
-        await this.startPosterGeneration(from);
-        return true;
-      }
-
-      // Check for CANCEL
-      if (lowerText === 'cancel' || lowerText === 'batal') {
-        await this.sock.sendMessage(from, { text: '❌ Poster mode dibatalkan.' });
-        this.clearPosterState();
-        return true;
-      }
-
-      await this.sock.sendMessage(from, {
-        text: '⚠️ Reply 1 (single cover) atau 2 (multi cover)'
-      });
-      return true;
-    }
-
-    // STATE: Preview (after generation)
-    if (this.posterState.state === 'preview') {
-      // Check for SAVE/YES
-      if (lowerText === 'yes' || lowerText === 'save' || lowerText === 'simpan') {
-        await this.sock.sendMessage(from, {
-          text: '✅ Poster sudah tersimpan di chat ini. Silakan download!'
-        });
-        this.clearPosterState();
-        return true;
-      }
-
-      // Check for CANCEL
-      if (lowerText === 'cancel' || lowerText === 'batal') {
-        await this.sock.sendMessage(from, { text: '❌ Poster dibatalkan.' });
-        this.clearPosterState();
-        return true;
-      }
-
-      // Check for REGEN with different settings
-      if (lowerText === 'regen' || lowerText === 'ulang') {
-        await this.startPosterGeneration(from);
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private async collectPosterImage(from: string, message: proto.IWebMessageInfo) {
-    if (!this.posterState) return;
-
-    try {
-      const content = message.message?.imageMessage;
-      if (!content) return;
-
-      // Download image
-      const { downloadMediaMessage } = await this.baileysPromise;
-      const buffer = await downloadMediaMessage(
-        message,
-        'buffer',
-        {}
-      ) as Buffer;
-
-      // Save to media folder
-      const filename = `poster_${Date.now()}_${this.posterState.imagePaths.length}.jpg`;
-      const filepath = path.join(this.mediaPath, filename);
-      await fsPromises.writeFile(filepath, buffer);
-
-      this.posterState.imagePaths.push(filepath);
-      this.posterState.timestamp = Date.now(); // Reset timeout
-
-      await this.sock.sendMessage(from, {
-        text: `✓ ${this.posterState.imagePaths.length} foto collected`
-      });
-
-      logger.info(`Poster image collected: ${filepath} (total: ${this.posterState.imagePaths.length})`);
-    } catch (error: any) {
-      logger.error('Failed to collect poster image:', error);
-      await this.sock.sendMessage(from, {
-        text: `⚠️ Gagal simpan foto: ${error.message}`
-      });
-    }
-  }
-
-  private async showBackgroundOptions(from: string) {
-    await this.sock.sendMessage(from, {
-      text: `🎨 *Pilih Background Style:*
-
-Reply dengan salah satu:
-• *gradient* - 🌈 Gradasi warna dari cover
-• *stripes* - 📊 Garis vertikal warna cover
-• *solid* - ⬜ Warna solid
-• *ai_creative* - 🎨 AI buat background kreatif
-
-Atau lanjut kirim foto.`
-    });
-  }
-
-  private async startPosterGeneration(from: string) {
-    if (!this.posterState || this.posterState.imagePaths.length === 0) {
-      await this.sock.sendMessage(from, {
-        text: '❌ Tidak ada gambar untuk diproses.'
-      });
-      return;
-    }
-
-    this.posterState.state = 'generating';
-
-    try {
-      await this.sock.sendMessage(from, {
-        text: `⏳ *Generating poster...*
-
-📸 ${this.posterState.imagePaths.length} foto
-🖼️ Platform: ${this.posterState.platform}
-🎨 Background: ${this.posterState.backgroundStyle}
-${this.posterState.title ? `📝 Title: ${this.posterState.title}` : ''}`
-      });
-
-      // Call AI Processor
-      const posterBuffer = await this.aiClient.generatePoster(
-        this.posterState.imagePaths,
-        this.posterState.platform,
-        this.posterState.title,
-        this.posterState.backgroundStyle,
-        this.posterState.customLayout,
-        this.posterState.coverType  // Pass to skip AI detection
-      );
-
-      // Save poster locally
-      const posterFilename = `poster_result_${Date.now()}.png`;
-      const posterPath = path.join(this.mediaPath, posterFilename);
-      await fsPromises.writeFile(posterPath, posterBuffer);
-
-      this.posterState.state = 'preview';
-      this.posterState.posterPath = posterPath;
-
-      // Send poster to user
-      await this.sock.sendMessage(from, {
-        image: { url: posterPath },
-        caption: `🎨 *POSTER GENERATED!*
-
-📸 ${this.posterState.imagePaths.length} covers
-📐 ${this.posterState.platform}
-
-Reply:
-• *YES* - Simpan & selesai
-• *REGEN* - Generate ulang
-• *CANCEL* - Batalkan`
-      });
-
-      logger.info(`Poster generated: ${posterPath}`);
-    } catch (error: any) {
-      logger.error('Poster generation failed:', error);
-      await this.sock.sendMessage(from, {
-        text: `❌ Gagal generate poster: ${error.message}`
-      });
-      this.clearPosterState();
-    }
-  }
-
-  private clearPosterState() {
-    if (this.posterState) {
-      // Cleanup collected images
-      for (const filepath of this.posterState.imagePaths) {
-        try {
-          if (fs.existsSync(filepath)) {
-            fs.unlinkSync(filepath);
-            logger.debug(`Cleaned up poster image: ${filepath}`);
-          }
-        } catch (error) {
-          logger.error(`Failed to cleanup poster image:`, error);
-        }
-      }
-      // Keep result poster, cleanup state
-      this.posterState = null;
-    }
-  }
+  // ==================== POSTER GENERATION FLOW REMOVED (DEPRECATED) ====================
 
   // ==================== CAPTION GENERATION FLOW ====================
 

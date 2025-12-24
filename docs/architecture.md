@@ -58,14 +58,7 @@ graph TD
   - **Hybrid Approach** (v1.3.0):
     - **Rule-based** (`output_formatter.py`): Price markup, template structure, link cleanup
     - **AI-based** (`gemini_client.py`): Review paragraph generation, publisher guessing
-  - **Poster Generator** (v2.0.0):
-    - **Core Engine**: `poster/` module with presets, layout engine, and Pillow-based renderer.
-    - **AI Backgrounds**: `background.py` uses Gemini 2.0 Flash to generate creative backgrounds.
-    - **Hybrid Composition**: Combines AI-generated backgrounds with code-based layout precision.
-    - **Hybrid Detection**:
-      - **AI Detect** (Multi-cover): Uses Gemini Vision to find bounding boxes.
-      - **Manual Override** (Single-cover): User specified "1=Single" skips AI detection (100% efficient).
-    - **Styles**: Supports gradients, stripes, solid colors, and AI creative themes.
+  - **Poster Generator**: ~~Removed (deprecated v2.3.0)~~
   - **Caption Generator (v2.2.0)**:
     - **Core**: `caption_analyzer.py` uses Gemini Vision to "read" posters and book covers.
     - **Auto-Detect Flow**: Automatically triggers when user sends image without text (no command needed).
@@ -100,11 +93,9 @@ graph TD
   - Enforces a 47-minute anti-spam interval between broadcasts.
   - Handles retries and status updates.
 
-### 4. Telegram Bot Service (Node.js + Telegraf)
-- **Role**: Secondary broadcast channel.
-- **Responsibilities**:
-  - Exposes HTTP API for Scheduler.
-  - Broadcasts messages and media to a configured Telegram Target.
+### 4. Telegram Bot Service ~~(Removed - deprecated v2.3.0)~~
+- Previously: Secondary broadcast channel to Telegram.
+- Status: Removed to reduce complexity. Was never configured.
 
 ## Data Schema (SQLite)
 

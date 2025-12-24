@@ -74,6 +74,9 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 
 ## Recently Completed
+- **Feature Deprecation** (2025-12-24)
+  - ✅ **telegram-bot service**: Removed to save RAM (128MB)
+  - ✅ **/poster command**: Removed poster system (save ~500 lines code, zero AI cost)
 
 - **Poster Generator Phase 1** (2025-12-21)
   - ✅ Platform dimension presets (IG, WA)
