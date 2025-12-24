@@ -17,6 +17,13 @@ All notable changes to this project will be documented in this file.
   - Auto-cleanup of expired states (10 min TTL)
   - **Benefit**: No more lost drafts/flows on deploy or crash
 
+- **Unified Draft Commands**: Consistent commands across all flows.
+  - New `draftCommands.ts` with `parseDraftCommand()` utility
+  - All flows now support: YES, YES DEV, SCHEDULE, EDIT, CANCEL, REGEN, COVER, LINKS
+  - **Bulk Item Selection**: Reply with "1,2,4" to select specific items
+  - Forward flow: now has REGEN, COVER commands
+  - Caption flow: now has SCHEDULE, COVER commands
+
 - **UX: Auto-detect Image-Only Messages**: No longer need `/caption` command.
   - Send image without text → Bot auto-detects → triggers caption flow
   - `/caption` command removed, flow is now automatic

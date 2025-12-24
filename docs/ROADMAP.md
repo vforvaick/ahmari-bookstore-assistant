@@ -16,10 +16,10 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
   - Multi-user support, 10-min TTL, auto-cleanup
   - **Ref**: Session 29ef2c93-499e-438a-ace8-b3a60ab3bea8
 
-- [ ] **Deployment Documentation**
+- [x] **Deployment Documentation** ✅ 2025-12-24
   - **Why**: Ensure reproducible deployments on VPS.
-  - **Status**: Pending.
-  - **Ref**: Task 14 in original plan.
+  - **Location**: `docs/DEPLOYMENT.md`
+  - **Ref**: Session 29ef2c93-499e-438a-ace8-b3a60ab3bea8
 
 ### Medium Priority
 - [ ] **Web Dashboard**
@@ -49,13 +49,10 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
   - Added argument examples for `/bulk`, `/new`, `/poster`
   - Bahasa Indonesia friendly
 
-- [ ] **Unified Draft Command System**
-  - **Why**: Currently each feature (forward, research, bulk) has its own draft commands (YES, YES DEV, REGEN, etc.) which is inconsistent and leads to code duplication.
-  - **Proposal**:
-    - Create a single, universal list of draft commands applicable to ALL drafts
-    - When sending a draft: Bubble 1 = draft content, Bubble 2 = universal command menu
-    - All drafts share the same editable possibilities, so one handler suffices
-    - Benefits: cleaner UX, no hardcoding per feature, simpler codebase
+- [x] **Unified Draft Command System** ✅ 2025-12-24
+  - Implemented `parseDraftCommand()` in `draftCommands.ts`
+  - All flows now share consistent commands
+  - Bulk mode supports item selection (e.g., "1,2,4")
 
 ### Architecture
 - [ ] **Codebase Refactor Proposal**
@@ -74,6 +71,11 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 
 ## Recently Completed
+- **Unified Draft System** (2025-12-24)
+  - ✅ Consistent commands across all flows (YES, SCHEDULE, REGEN, COVER, LINKS)
+  - ✅ Bulk item selection (reply "1,2,4" to select specific items)
+  - ✅ New `draftCommands.ts` utility module
+
 - **Feature Deprecation** (2025-12-24)
   - ✅ **telegram-bot service**: Removed to save RAM (128MB)
   - ✅ **/poster command**: Removed poster system (save ~500 lines code, zero AI cost)

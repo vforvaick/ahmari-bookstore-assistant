@@ -44,7 +44,7 @@ graph TD
 - **Responsibilities**:
   - Maintains WhatsApp connection via Baileys.
   - Detects forwarded FGB broadcasts using regex patterns.
-  - Handles interactive conversation flow (YES / EDIT DULU / SCHEDULE).
+  - Handles interactive conversation flow via **Unified Draft System** (YES / SCHEDULE / REGEN / COVER / LINKS).
   - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
   - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
   - **Poster Mode** (v2.0.0): `/poster` command for creating promotional posters from book covers.

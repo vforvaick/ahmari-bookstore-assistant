@@ -7,6 +7,7 @@ exports.MessageHandler = void 0;
 const pino_1 = __importDefault(require("pino"));
 const detector_1 = require("./detector");
 const stateStore_1 = require("./stateStore");
+const draftCommands_1 = require("./draftCommands");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const fs_2 = require("fs");
@@ -513,36 +514,46 @@ Gunakan /groups untuk lihat JID yang valid.`
             });
             return true;
         }
-        // STATE 2: Draft pending - waiting for YES/CANCEL
+        // STATE 2: Draft pending - unified command handling
         if (this.pendingState.state === 'draft_pending') {
-            // Check for YES DEV response (send to dev group)
-            if (text === 'yes dev' || text === 'y dev') {
-                await this.sendBroadcast(from, this.devGroupJid || undefined);
-                return true;
-            }
-            // Check for YES response (send to production group)
-            if (text === 'yes' || text === 'y' || text === 'ya' || text === 'iya') {
-                await this.sendBroadcast(from);
-                return true;
-            }
-            // Check for SCHEDULE response
-            if (text.includes('schedule') || text.includes('antri') || text.includes('nanti')) {
-                await this.scheduleBroadcast(from);
-                return true;
-            }
-            // Check for EDIT response
-            if (text.includes('edit') || text.includes('ubah') || text.includes('ganti')) {
-                await this.sock.sendMessage(from, {
-                    text: '✏️ Silakan edit manual draft-nya lalu forward ulang ke saya ya!'
-                });
-                this.clearPendingState(from);
-                return true;
-            }
-            // Check for CANCEL response
-            if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
-                await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
-                this.clearPendingState(from);
-                return true;
+            const cmd = (0, draftCommands_1.parseDraftCommand)(text);
+            switch (cmd.action) {
+                case 'send':
+                    const sendTargetJid = cmd.target === 'dev' && this.devGroupJid ? this.devGroupJid : undefined;
+                    await this.sendBroadcast(from, sendTargetJid);
+                    return true;
+                case 'schedule':
+                    const scheduleTargetJid = cmd.target === 'dev' && this.devGroupJid ? this.devGroupJid : undefined;
+                    await this.scheduleBroadcast(from, cmd.interval, scheduleTargetJid);
+                    return true;
+                case 'regen':
+                    // Regenerate with same level
+                    if (this.pendingState.rawText) {
+                        const currentLevel = this.pendingState.parsedData?.level || 2;
+                        await this.generateDraftWithLevel(from, currentLevel);
+                    }
+                    return true;
+                case 'cover':
+                    // Search for cover images based on parsed title
+                    await this.searchCoverForForward(from);
+                    return true;
+                case 'links':
+                    await this.sock.sendMessage(from, { text: '🔍 LINKS belum tersedia untuk forward mode.' });
+                    return true;
+                case 'edit':
+                    // Send clean draft for copy-paste
+                    if (this.pendingState.draft) {
+                        await this.sock.sendMessage(from, { text: this.pendingState.draft });
+                    }
+                    await this.sock.sendMessage(from, {
+                        text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu forward ulang ke saya!'
+                    });
+                    this.clearPendingState(from);
+                    return true;
+                case 'cancel':
+                    await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
+                    this.clearPendingState(from);
+                    return true;
             }
         }
         return false;
@@ -643,12 +654,45 @@ Gunakan /groups untuk lihat JID yang valid.`
             this.clearPendingState(from);
         }
     }
-    async scheduleBroadcast(from) {
+    async scheduleBroadcast(from, intervalMinutes, targetJid) {
         // For now, just save to queue - full implementation would use database
+        const interval = intervalMinutes || 47;
         await this.sock.sendMessage(from, {
-            text: '📅 Fitur schedule masih dalam pengembangan. Untuk sementara, silakan kirim manual dengan reply YES.'
+            text: `📅 Fitur schedule masih dalam pengembangan. Interval: ${interval} menit. Untuk sementara, silakan kirim manual dengan reply YES.`
         });
         // Don't clear pending state so user can still reply YES
+    }
+    /**
+     * Search for cover images based on forward parsed data
+     */
+    async searchCoverForForward(from) {
+        if (!this.pendingState || !this.pendingState.parsedData) {
+            await this.sock.sendMessage(from, { text: '❌ Tidak ada data buku untuk dicari cover-nya.' });
+            return;
+        }
+        try {
+            const title = this.pendingState.parsedData.title || 'buku';
+            await this.sock.sendMessage(from, { text: `🔍 Mencari cover untuk "${title}"...` });
+            const images = await this.aiClient.searchImages(title, 5);
+            if (images.length === 0) {
+                await this.sock.sendMessage(from, { text: '❌ Cover tidak ditemukan.' });
+                return;
+            }
+            // Show options (similar to research flow)
+            let msg = `📷 *Pilih cover:*\n\n`;
+            images.forEach((img, i) => {
+                msg += `${i + 1}. ${img.source || 'image'}\n`;
+            });
+            msg += `\n0. Batalkan\n\n---\nBalas dengan angka 0-${images.length}`;
+            // Store in pendingState for selection
+            this.pendingState.coverOptions = images;
+            this.pendingState.state = 'cover_selection';
+            await this.sock.sendMessage(from, { text: msg });
+        }
+        catch (error) {
+            logger.error('Cover search error:', error);
+            await this.sock.sendMessage(from, { text: `❌ Gagal cari cover: ${error.message}` });
+        }
     }
     clearPendingState(userJid) {
         if (this.pendingState) {
@@ -951,10 +995,10 @@ Kirim /done kalau sudah selesai.
         }
         preview += `━━━━━━━━━━━━━━━━━━━━\n`;
         preview += `Reply:\n`;
-        preview += `• *YES* - Kirim ke PRODUCTION (random 15-30 detik)\n`;
-        preview += `• *YES DEV* - Kirim ke DEV\n`;
-        preview += `• *SCHEDULE 30* - Jadwalkan ke PRODUCTION tiap 30 menit\n`;
-        preview += `• *SCHEDULE DEV 30* - Jadwalkan ke DEV tiap 30 menit\n`;
+        preview += `• *YES* - Kirim semua ke PRODUCTION\n`;
+        preview += `• *YES DEV* - Kirim semua ke DEV\n`;
+        preview += `• *1,2,4* - Pilih item tertentu (sisanya skip)\n`;
+        preview += `• *SCHEDULE 30* - Jadwalkan tiap 30 menit\n`;
         preview += `• *CANCEL* - Batalkan semua`;
         // Split message if too long (WhatsApp limit ~4000 chars)
         if (preview.length > 4000) {
@@ -971,50 +1015,90 @@ Kirim /done kalau sudah selesai.
     async handleBulkResponse(from, text) {
         if (!this.bulkState || this.bulkState.state !== 'preview_pending')
             return false;
-        const normalizedText = text.toLowerCase().trim();
-        // YES DEV - send to dev group
-        if (normalizedText === 'yes dev' || normalizedText === 'y dev') {
-            await this.sendBulkBroadcasts(from, this.devGroupJid || undefined);
-            return true;
-        }
-        // YES - send to production group
-        if (normalizedText === 'yes' || normalizedText === 'y' || normalizedText === 'ya') {
-            await this.sendBulkBroadcasts(from);
-            return true;
-        }
-        // SCHEDULE DEV X - schedule to dev group
-        if (normalizedText.startsWith('schedule dev')) {
-            const parts = normalizedText.split(/\s+/);
-            const minutes = parts[2] ? parseInt(parts[2]) : 30;
-            if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
-                await this.sock.sendMessage(from, {
-                    text: '❌ Interval tidak valid. Contoh: SCHEDULE DEV 30 (untuk 30 menit)'
-                });
+        const cmd = (0, draftCommands_1.parseDraftCommand)(text);
+        switch (cmd.action) {
+            case 'send':
+                const targetJid = cmd.target === 'dev' && this.devGroupJid ? this.devGroupJid : undefined;
+                await this.sendBulkBroadcasts(from, targetJid);
                 return true;
-            }
-            await this.scheduleBulkBroadcasts(from, minutes, this.devGroupJid || undefined);
-            return true;
-        }
-        // SCHEDULE X - schedule to production group
-        if (normalizedText.startsWith('schedule')) {
-            const parts = normalizedText.split(/\s+/);
-            const minutes = parts[1] ? parseInt(parts[1]) : 30;
-            if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
-                await this.sock.sendMessage(from, {
-                    text: '❌ Interval tidak valid. Contoh: SCHEDULE 30 (untuk 30 menit)'
-                });
+            case 'schedule':
+                const scheduleTarget = cmd.target === 'dev' && this.devGroupJid ? this.devGroupJid : undefined;
+                await this.scheduleBulkBroadcasts(from, cmd.interval || 30, scheduleTarget);
                 return true;
-            }
-            await this.scheduleBulkBroadcasts(from, minutes);
-            return true;
-        }
-        // CANCEL
-        if (normalizedText.includes('cancel') || normalizedText.includes('batal')) {
-            await this.sock.sendMessage(from, { text: '❌ Bulk mode dibatalkan.' });
-            this.clearBulkState(from);
-            return true;
+            case 'select':
+                // User selected specific items (e.g., "1,2,4")
+                if (cmd.selectedItems && cmd.selectedItems.length > 0) {
+                    await this.handleBulkItemSelection(from, cmd.selectedItems);
+                }
+                else {
+                    // "ALL" was selected
+                    await this.sendBulkBroadcasts(from);
+                }
+                return true;
+            case 'cancel':
+                await this.sock.sendMessage(from, { text: '❌ Bulk mode dibatalkan.' });
+                this.clearBulkState(from);
+                return true;
         }
         return false;
+    }
+    /**
+     * Handle bulk item selection (e.g., user replied "1,2,4")
+     * Selected items proceed to send, others go to edit queue
+     */
+    async handleBulkItemSelection(from, selectedIndices) {
+        if (!this.bulkState)
+            return;
+        const totalItems = this.bulkState.items.filter(i => i.generated?.draft).length;
+        const validIndices = selectedIndices.filter(i => i >= 1 && i <= totalItems);
+        if (validIndices.length === 0) {
+            await this.sock.sendMessage(from, {
+                text: `⚠️ Pilihan tidak valid. Pilih angka 1-${totalItems} (contoh: 1,2,4) atau *ALL* untuk semua.`
+            });
+            return;
+        }
+        // Mark selected items
+        const selectedSet = new Set(validIndices);
+        const selectedItems = this.bulkState.items.filter((_, i) => selectedSet.has(i + 1));
+        const rejectedItems = this.bulkState.items.filter((_, i) => !selectedSet.has(i + 1));
+        // Send selected items
+        await this.sock.sendMessage(from, {
+            text: `✅ Mengirim ${selectedItems.length} broadcast terpilih...`
+        });
+        // Actually send the selected ones
+        let sentCount = 0;
+        for (const item of selectedItems) {
+            if (item.generated?.draft) {
+                try {
+                    if (item.mediaPaths.length > 0 && fs_1.default.existsSync(item.mediaPaths[0])) {
+                        await this.sock.sendMessage(this.targetGroupJid, {
+                            image: { url: item.mediaPaths[0] },
+                            caption: item.generated.draft
+                        });
+                    }
+                    else {
+                        await this.sock.sendMessage(this.targetGroupJid, {
+                            text: item.generated.draft
+                        });
+                    }
+                    sentCount++;
+                    await sleep(1500);
+                }
+                catch (error) {
+                    logger.error('Failed to send bulk item:', error);
+                }
+            }
+        }
+        await this.sock.sendMessage(from, {
+            text: `✅ ${sentCount}/${selectedItems.length} broadcast terkirim!`
+        });
+        // Show rejected items for individual editing
+        if (rejectedItems.length > 0) {
+            await this.sock.sendMessage(from, {
+                text: `📝 *${rejectedItems.length} item tidak terpilih.*\n\nItem ini bisa di-forward ulang untuk di-edit satu per satu.`
+            });
+        }
+        this.clearBulkState(from);
     }
     async sendBulkBroadcasts(from, targetJid) {
         // Use provided targetJid or default to production group
@@ -1939,37 +2023,45 @@ Pilih level rekomendasi:
             });
             return true;
         }
-        // STATE: Draft pending
+        // STATE: Draft pending - unified command handling
         if (this.captionState.state === 'draft_pending') {
-            // YES DEV
-            if (lowerText === 'yes dev' || lowerText === 'y dev') {
-                await this.sendCaptionBroadcast(from, this.devGroupJid || undefined);
-                return true;
-            }
-            // YES
-            if (lowerText === 'yes' || lowerText === 'y' || lowerText === 'ya') {
-                await this.sendCaptionBroadcast(from);
-                return true;
-            }
-            // EDIT
-            if (lowerText.includes('edit')) {
-                if (this.captionState.draft) {
-                    await this.sock.sendMessage(from, { text: this.captionState.draft });
-                }
-                await this.sock.sendMessage(from, {
-                    text: '✏️ Draft di atas. Edit manual lalu kirim ulang kalau perlu.'
-                });
-                this.clearCaptionState(from);
-                return true;
-            }
-            // REGEN
-            if (lowerText === 'regen' || lowerText === 'ulang') {
-                this.captionState.state = 'level_selection';
-                await this.sock.sendMessage(from, {
-                    text: `Pilih level lagi:
-*1* - Standard | *2* - Recommended | *3* - Top Pick`
-                });
-                return true;
+            const cmd = (0, draftCommands_1.parseDraftCommand)(text);
+            switch (cmd.action) {
+                case 'send':
+                    const targetJid = cmd.target === 'dev' && this.devGroupJid ? this.devGroupJid : undefined;
+                    await this.sendCaptionBroadcast(from, targetJid);
+                    return true;
+                case 'schedule':
+                    // TODO: Implement schedule for caption
+                    await this.sock.sendMessage(from, {
+                        text: `📅 Schedule (${cmd.interval || 47} menit) belum tersedia. Kirim manual dengan YES.`
+                    });
+                    return true;
+                case 'regen':
+                    this.captionState.state = 'level_selection';
+                    await this.sock.sendMessage(from, {
+                        text: `Pilih level lagi:\n*1* - Standard | *2* - Recommended | *3* - Top Pick`
+                    });
+                    return true;
+                case 'cover':
+                    await this.searchCoverForCaption(from);
+                    return true;
+                case 'links':
+                    await this.sock.sendMessage(from, { text: '🔍 LINKS belum tersedia untuk caption mode.' });
+                    return true;
+                case 'edit':
+                    if (this.captionState.draft) {
+                        await this.sock.sendMessage(from, { text: this.captionState.draft });
+                    }
+                    await this.sock.sendMessage(from, {
+                        text: '✏️ Draft di atas. Edit manual lalu kirim ulang kalau perlu.'
+                    });
+                    this.clearCaptionState(from);
+                    return true;
+                case 'cancel':
+                    await this.sock.sendMessage(from, { text: '❌ Caption dibatalkan.' });
+                    this.clearCaptionState(from);
+                    return true;
             }
         }
         return false;
@@ -2211,6 +2303,35 @@ Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
         }
         finally {
             this.clearCaptionState(from);
+        }
+    }
+    /**
+     * Search for cover images in caption mode
+     */
+    async searchCoverForCaption(from) {
+        if (!this.captionState || !this.captionState.analysis) {
+            await this.sock.sendMessage(from, { text: '❌ Tidak ada data untuk dicari cover-nya.' });
+            return;
+        }
+        try {
+            const title = this.captionState.analysis.title || 'buku';
+            await this.sock.sendMessage(from, { text: `🔍 Mencari cover untuk "${title}"...` });
+            const images = await this.aiClient.searchImages(title, 5);
+            if (images.length === 0) {
+                await this.sock.sendMessage(from, { text: '❌ Cover tidak ditemukan.' });
+                return;
+            }
+            let msg = `📷 *Pilih cover:*\n\n`;
+            images.forEach((img, i) => {
+                msg += `${i + 1}. ${img.source || 'image'}\n`;
+            });
+            msg += `\n0. Batalkan\n\n---\nBalas dengan angka 0-${images.length}`;
+            await this.sock.sendMessage(from, { text: msg });
+            // TODO: Handle cover selection state for caption
+        }
+        catch (error) {
+            logger.error('Cover search error:', error);
+            await this.sock.sendMessage(from, { text: `❌ Gagal cari cover: ${error.message}` });
         }
     }
     clearCaptionState(userJid) {
