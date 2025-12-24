@@ -53,11 +53,11 @@ class StateStore {
 
         // Prepared statements for performance
         this.getStmt = this.db.prepare(
-            'SELECT state_data FROM conversation_states WHERE user_jid = ? AND state_type = ? AND expires_at > datetime("now")'
+            "SELECT state_data FROM conversation_states WHERE user_jid = ? AND state_type = ? AND expires_at > datetime('now')"
         );
         this.setStmt = this.db.prepare(`
       INSERT OR REPLACE INTO conversation_states (user_jid, state_type, state_data, expires_at, updated_at)
-      VALUES (?, ?, ?, datetime("now", ? || " minutes"), datetime("now"))
+      VALUES (?, ?, ?, datetime('now', ? || ' minutes'), datetime('now'))
     `);
         this.deleteStmt = this.db.prepare(
             'DELETE FROM conversation_states WHERE user_jid = ? AND state_type = ?'
@@ -66,7 +66,7 @@ class StateStore {
             'DELETE FROM conversation_states WHERE user_jid = ?'
         );
         this.cleanupStmt = this.db.prepare(
-            'DELETE FROM conversation_states WHERE expires_at <= datetime("now")'
+            "DELETE FROM conversation_states WHERE expires_at <= datetime('now')"
         );
 
         // Cleanup expired states on startup
