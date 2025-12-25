@@ -15,9 +15,13 @@ const FGB_PATTERNS = [
     /(🌳{2,}|🦊{2,})/,
     /🏷️\s*Rp/i, // Price tag emoji with Rp
 ];
+// Littlerazy patterns: Title HC/HB/PB/BB PRICE ETA MONTH EMOJI
+const LITTLERAZY_PATTERNS = [
+    /\b(HC|HB|PB|BB)\s+\d+[\.\d]*\s+ETA\s+\w+\s*[🌸🌺🌷🌹💐🌻🌼]+/i, // Format + Price + ETA + flower emoji
+];
 function detectFGBBroadcast(message) {
     const result = {
-        isFGBBroadcast: false,
+        isBroadcast: false,
         text: '',
         hasMedia: false,
         mediaCount: 0,
@@ -94,21 +98,29 @@ function detectFGBBroadcast(message) {
     }, 'Detection analysis');
     // Check if matches FGB patterns
     if (textContent) {
-        const matchedPatterns = FGB_PATTERNS.filter(pattern => pattern.test(textContent));
-        const hasPattern = matchedPatterns.length > 0;
+        const matchedFGBPatterns = FGB_PATTERNS.filter(pattern => pattern.test(textContent));
+        const matchedLitterazyPatterns = LITTLERAZY_PATTERNS.filter(pattern => pattern.test(textContent));
         logger.debug({
-            hasPattern,
-            matchedCount: matchedPatterns.length,
+            fgbMatches: matchedFGBPatterns.length,
+            litterazyMatches: matchedLitterazyPatterns.length,
         }, 'Pattern matching result');
-        // For FGB broadcast detection:
-        // - Must have pattern match
-        // - Media is optional (some broadcasts are text-only with link)
-        if (hasPattern) {
-            result.isFGBBroadcast = true;
+        // FGB patterns take priority if both match
+        if (matchedFGBPatterns.length > 0) {
+            result.isBroadcast = true;
+            result.detectedSupplier = 'fgb';
             logger.info({
                 title: textContent.match(/\*([^*]+)\*/)?.[1] || 'Unknown',
                 hasMedia: result.hasMedia,
+                supplier: 'fgb',
             }, 'FGB broadcast detected');
+        }
+        else if (matchedLitterazyPatterns.length > 0) {
+            result.isBroadcast = true;
+            result.detectedSupplier = 'littlerazy';
+            logger.info({
+                hasMedia: result.hasMedia,
+                supplier: 'littlerazy',
+            }, 'Littlerazy broadcast detected');
         }
     }
     return result;

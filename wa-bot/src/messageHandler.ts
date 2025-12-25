@@ -240,11 +240,11 @@ export class MessageHandler {
         if (handled) return;
       }
 
-      // Detect if this is an FGB broadcast
+      // Detect if this is a supplier broadcast (FGB or Littlerazy)
       const detection = detectFGBBroadcast(message);
 
-      if (detection.isFGBBroadcast) {
-        logger.info('FGB broadcast detected!');
+      if (detection.isBroadcast) {
+        logger.info({ supplier: detection.detectedSupplier }, 'Broadcast detected!');
 
         // If bulk mode is active, collect instead of single process
         if (this.bulkState && this.bulkState.state === 'collecting') {
@@ -253,11 +253,11 @@ export class MessageHandler {
           await this.processFGBBroadcast(message, detection);
         }
       } else if (detection.hasMedia && !detection.text.trim()) {
-        // Image-only message (no FGB caption) → trigger caption flow
+        // Image-only message (no caption) → trigger caption flow
         logger.info('Image-only message detected, starting caption flow');
         await this.startCaptionModeWithImage(from, message);
       } else {
-        logger.debug('Not an FGB broadcast or image-only, ignoring');
+        logger.debug('Not a recognized broadcast or image-only, ignoring');
       }
     } catch (error) {
       logger.error('Error handling message:', error);
@@ -1064,17 +1064,32 @@ Balas dengan angka *1*, *2*, atau *3*`;
         }
       }
 
-      // Store pending state for SUPPLIER SELECTION first
-      this.pendingState = {
-        state: 'supplier_selection',
-        rawText: detection.text,  // Store raw text for later parsing
-        mediaPaths: [...mediaPaths],
-        timestamp: Date.now()
-      };
-      this.saveState(from, 'pending', this.pendingState);  // Persist to DB
+      // Check if supplier was auto-detected
+      if (detection.detectedSupplier) {
+        // Supplier auto-detected → skip supplier selection, go directly to level selection
+        this.pendingState = {
+          state: 'level_selection',
+          supplierType: detection.detectedSupplier,
+          rawText: detection.text,
+          mediaPaths: [...mediaPaths],
+          timestamp: Date.now()
+        };
+        this.saveState(from, 'pending', this.pendingState);
 
-      // Show supplier selection prompt
-      const supplierSelectionMessage = `📦 *Broadcast Terdeteksi!*
+        await this.showLevelSelection(from);
+        logger.info({ supplier: detection.detectedSupplier }, 'Supplier auto-detected, showing level selection');
+      } else {
+        // Supplier not auto-detected → ask user to select
+        this.pendingState = {
+          state: 'supplier_selection',
+          rawText: detection.text,
+          mediaPaths: [...mediaPaths],
+          timestamp: Date.now()
+        };
+        this.saveState(from, 'pending', this.pendingState);
+
+        // Show supplier selection prompt
+        const supplierSelectionMessage = `📦 *Broadcast Terdeteksi!*
 
 Dari supplier mana?
 
@@ -1084,20 +1099,21 @@ Dari supplier mana?
 ---
 Balas dengan angka *1* atau *2*`;
 
-      if (mediaPaths.length > 0) {
-        await this.sock.sendMessage(from, {
-          image: { url: mediaPaths[0] },
-          caption: supplierSelectionMessage,
-        });
-      } else {
-        await this.sock.sendMessage(from, {
-          text: supplierSelectionMessage,
-        });
+        if (mediaPaths.length > 0) {
+          await this.sock.sendMessage(from, {
+            image: { url: mediaPaths[0] },
+            caption: supplierSelectionMessage,
+          });
+        } else {
+          await this.sock.sendMessage(from, {
+            text: supplierSelectionMessage,
+          });
+        }
+
+        logger.info('Supplier selection prompt sent');
+
+        // DON'T cleanup media yet - wait for YES response
       }
-
-      logger.info('Supplier selection prompt sent');
-
-      // DON'T cleanup media yet - wait for YES response
 
     } catch (error: any) {
       logger.error('Error processing FGB broadcast:', error);
