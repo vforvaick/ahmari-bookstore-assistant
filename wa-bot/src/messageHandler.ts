@@ -343,31 +343,40 @@ export class MessageHandler {
 
   private async sendHelp(from: string) {
     await this.sock.sendMessage(from, {
-      text: `🤖 *Ahmari Bookstore Bot*
+      text: `👋 *Halo! Aku Ahmari Bookstore Bot*
 
-📖 *BUAT PROMO*
-• Forward broadcast FGB → langsung generate!
-• Kirim gambar cover → generate dari gambar!
-• /new <judul buku>
-  Contoh: /new Atomic Habits
-  → Cari di internet → pilih hasil → isi harga → draft
-• /bulk [level]
-  Contoh: /bulk 2 atau /bulk 3
-  Level: 1=standar, 2=rekomendasi, 3=racun
-  → Forward banyak → ketik /done → proses semua
+Siap bantu kamu bikin konten promo buku! ✨
 
+━━━━━━━━━━━━━━━━━━━━
 
+📦 *PUNYA BROADCAST DARI SUPPLIER?*
 
-📅 *JADWAL*
+Kalau kamu punya *broadcast message* dari supplier, langsung *forward* aja ke sini! Nanti aku proses dan buatkan template promonya.
+
+*Supplier yang didukung:*
+• FGB
+• Littlerazy
+
+*Mau kirim banyak sekaligus?*
+Ketik \`/bulk 2\` atau \`/bulk 3\` dulu → forward semua broadcast → ketik \`/done\` → aku proses semuanya!
+
+━━━━━━━━━━━━━━━━━━━━
+
+📷 *PUNYA FOTO COVER BUKU?*
+
+Kalau kamu cuma punya *foto cover* (single atau multiple), langsung *kirim* aja ke sini tanpa caption.
+
+Nanti aku analisis gambarnya dan buatkan caption promonya!
+
+━━━━━━━━━━━━━━━━━━━━
+
+⚙️ *COMMAND LAINNYA*
+
 • /queue → lihat antrian broadcast
-• /flush → kirim semua antrian SEKARANG
-• /cancel → batalkan draft/state pending
-
-⚙️ *ADMIN*
+• /flush → kirim semua antrian sekarang
+• /cancel → batalkan proses
 • /status → info bot & config
-• /setmarkup <angka> → contoh: /setmarkup 25000
-• /groups → list semua grup
-• /setgroup <prod|dev> <JID>`
+• /setmarkup → set markup harga`
     });
   }
 

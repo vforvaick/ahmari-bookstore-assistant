@@ -71,6 +71,11 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 
 ## Recently Completed
+- **UX: Revamped /help Command** (2025-12-25)
+  - ✅ Friendly greeting & visual separators
+  - ✅ Use-case driven structure (Broadcast vs Image)
+  - ✅ Clearer bulk instructions
+
 - **Multi-Supplier Parsing** (2025-12-24)
   - ✅ Support for FGB and Littlerazy suppliers
   - ✅ `littlerazy_parser.py` implementation

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **UX: Revamped `/help` Command** (2025-12-25):
+  - Completely rewritten to be human-friendly and use-case driven.
+  - Added "Halo!" greeting and visual separators.
+  - Structured by task: "PUNYA BROADCAST?", "PUNYA FOTO?", "ADMIN".
+  - clearer instructions for FGB vs Littlerazy and Bulk mode.
+
 - **UX: Improved `/help` Command**: Redesigned with purpose-based grouping.
   - Grouped by user intent: "Buat Promo", "Buat Poster", "Jadwal", "Admin"
   - Added detailed argument examples for `/bulk`, `/new`, `/poster`
@@ -442,3 +448,10 @@ All notable changes to this project will be documented in this file.
 
 ### Reference
 - **Repo State**: Functionally complete for local testing.
+
+## [1.2.3] - 2025-12-25
+### Changed
+- **UX: Revamped `/help` Command**:
+  - Rewritten for friendliness and clarity.
+  - Organized by use-case with better visual hierarchy.
+
