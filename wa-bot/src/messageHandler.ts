@@ -851,18 +851,23 @@ Balas dengan angka *1*, *2*, atau *3*`;
       this.pendingState.state = 'draft_pending';
       this.pendingState.draft = generated.draft;
 
-      // Send draft with media
+      // BUBBLE 1: Send draft with media (no menu here)
       const { mediaPaths } = this.pendingState;
       if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
         await this.sock.sendMessage(from, {
           image: { url: mediaPaths[0] },
-          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+          caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`,
         });
       } else {
         await this.sock.sendMessage(from, {
-          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n• *YES* - kirim ke grup PRODUCTION\n• *YES DEV* - kirim ke grup DEV\n• *EDIT* - edit manual dulu\n• *CANCEL* - batalkan`,
+          text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`,
         });
       }
+
+      // BUBBLE 2: Send unified menu (separate message)
+      await this.sock.sendMessage(from, {
+        text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+      });
     } catch (error: any) {
       logger.error('Error generating draft:', error);
       await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
@@ -2017,18 +2022,23 @@ Kirim /done kalau sudah selesai.
 
           this.researchState.draft = generated.draft;
 
-          // Send draft with image if available
+          // BUBBLE 1: Send draft with image if available
           const imagePath = this.researchState.imagePath;
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - pilih cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`
             });
           }
+
+          // BUBBLE 2: Send unified menu (separate message)
+          await this.sock.sendMessage(from, {
+            text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+          });
 
           logger.info('Research draft generated');
           return true;
@@ -2086,13 +2096,16 @@ Kirim /done kalau sudah selesai.
         if (imagePath && fs.existsSync(imagePath)) {
           await this.sock.sendMessage(from, {
             image: { url: imagePath },
-            caption: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
+            caption: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}`
           });
         } else {
           await this.sock.sendMessage(from, {
-            text: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - pilih cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
+            text: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}`
           });
         }
+        await this.sock.sendMessage(from, {
+          text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+        });
         return true;
       }
 
@@ -2144,20 +2157,22 @@ Kirim /done kalau sudah selesai.
         this.researchState.draft = generated.draft;
         this.researchState.state = 'draft_pending';
 
-        // Re-display with new draft
+        // Re-display with new draft (BUBBLE 1)
         const imagePath = this.researchState.imagePath;
-        const optionsText = `---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`;
-
         if (imagePath && fs.existsSync(imagePath)) {
           await this.sock.sendMessage(from, {
             image: { url: imagePath },
-            caption: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}\n\n${optionsText}`
+            caption: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}`
           });
         } else {
           await this.sock.sendMessage(from, {
-            text: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}\n\n${optionsText}`
+            text: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}`
           });
         }
+        // BUBBLE 2: Menu
+        await this.sock.sendMessage(from, {
+          text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+        });
         return true;
       } catch (error: any) {
         this.researchState.state = 'draft_pending';
@@ -2264,18 +2279,22 @@ Kirim /done kalau sudah selesai.
           );
           this.researchState.draft = updatedDraft;
 
-          // Re-display updated draft
+          // Re-display updated draft (BUBBLE 1)
           const imagePath = this.researchState.imagePath;
           if (imagePath && fs.existsSync(imagePath)) {
             await this.sock.sendMessage(from, {
               image: { url: imagePath },
-              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - ganti cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
+              caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}`
             });
           } else {
             await this.sock.sendMessage(from, {
-              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}\n\n---\nBalas dengan:\n1. *YES* - kirim ke grup PRODUCTION\n2. *YES DEV* - kirim ke grup DEV\n3. *COVER* - pilih cover image\n4. *LINKS* - cari link preview\n5. *REGEN* - regenerate review\n6. *EDIT* - edit manual\n7. *CANCEL* - batalkan`
+              text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}`
             });
           }
+          // BUBBLE 2: Menu
+          await this.sock.sendMessage(from, {
+            text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+          });
 
           logger.info(`Updated draft with ${newLinks.length} new preview links`);
           return true;
