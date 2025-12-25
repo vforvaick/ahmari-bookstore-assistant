@@ -30,6 +30,14 @@ All notable changes to this project will be documented in this file.
   - `/supplier` command to change parser mid-bulk
   - Format: `TITLE FORMAT PRICE ETA MONTH EMOJI Description`
 
+- **Unified Draft System v2**: Consistent draft display across all flows.
+  - New `formatDraftBubble()` for consistent BUBBLE 1 formatting
+  - All draft displays now use: `📝 *DRAFT BROADCAST*` or `📝 *DRAFT CAPTION*`
+  - Menu always in separate BUBBLE 2 via `getDraftMenu()`
+  - **Littlerazy Incomplete Data**: Bot detects missing fields (close PO, min order)
+    - Single forward: Prompts user for missing data or `/skip`
+    - Bulk preview: Shows ⚠️ for incomplete items vs ✅ for complete
+
 - **UX: Auto-detect Image-Only Messages**: No longer need `/caption` command.
   - Send image without text → Bot auto-detects → triggers caption flow
   - `/caption` command removed, flow is now automatic
