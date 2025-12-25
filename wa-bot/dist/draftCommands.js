@@ -11,6 +11,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseDraftCommand = parseDraftCommand;
 exports.getDraftMenu = getDraftMenu;
+exports.formatDraftBubble = formatDraftBubble;
 /**
  * Parse user input into a DraftCommand
  * Handles all aliases and variations
@@ -115,4 +116,21 @@ function getDraftMenu(options) {
         lines.push('_Atau pilih item: 1,2,4_');
     }
     return lines.join('\n');
+}
+/**
+ * Format BUBBLE 1: Draft content with consistent heading
+ * Use this for all draft displays to ensure uniformity
+ *
+ * @param draft - The draft content to display
+ * @param variant - Type of draft: 'broadcast', 'caption', 'updated', 'feedback'
+ * @returns Formatted string for BUBBLE 1
+ */
+function formatDraftBubble(draft, variant = 'broadcast') {
+    const headings = {
+        broadcast: '📝 *DRAFT BROADCAST*',
+        caption: '📝 *DRAFT CAPTION*',
+        updated: '📝 *DRAFT BROADCAST (Updated)*',
+        feedback: '📝 *DRAFT BROADCAST (Updated per feedback)*',
+    };
+    return `${headings[variant]}\n\n${draft}`;
 }

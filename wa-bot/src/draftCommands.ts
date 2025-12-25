@@ -162,3 +162,29 @@ export function getDraftMenu(options: {
 
     return lines.join('\n');
 }
+
+/**
+ * Draft bubble variant types
+ */
+export type DraftBubbleVariant = 'broadcast' | 'caption' | 'updated' | 'feedback';
+
+/**
+ * Format BUBBLE 1: Draft content with consistent heading
+ * Use this for all draft displays to ensure uniformity
+ * 
+ * @param draft - The draft content to display
+ * @param variant - Type of draft: 'broadcast', 'caption', 'updated', 'feedback'
+ * @returns Formatted string for BUBBLE 1
+ */
+export function formatDraftBubble(
+    draft: string,
+    variant: DraftBubbleVariant = 'broadcast'
+): string {
+    const headings: Record<DraftBubbleVariant, string> = {
+        broadcast: '📝 *DRAFT BROADCAST*',
+        caption: '📝 *DRAFT CAPTION*',
+        updated: '📝 *DRAFT BROADCAST (Updated)*',
+        feedback: '📝 *DRAFT BROADCAST (Updated per feedback)*',
+    };
+    return `${headings[variant]}\n\n${draft}`;
+}

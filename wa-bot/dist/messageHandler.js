@@ -577,6 +577,47 @@ Gunakan /groups untuk lihat JID yang valid.`
             });
             return true;
         }
+        // STATE 1.5: Awaiting details (for incomplete Littlerazy data)
+        if (this.pendingState.state === 'awaiting_details') {
+            // Handle /skip - proceed without filling
+            if (text.toLowerCase().includes('/skip') || text.toLowerCase() === 'skip') {
+                await this.sock.sendMessage(from, { text: '⏭️ Melewati pengisian data...' });
+                await this.generateDraftFromParsedData(from);
+                return true;
+            }
+            // Handle CANCEL
+            if (text.includes('cancel') || text.includes('batal')) {
+                await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
+                this.clearPendingState(from);
+                return true;
+            }
+            // Try to parse user input: "15 JAN, 3 pcs" or "15 JAN" or "3 pcs"
+            const parsedDetails = this.parseUserDetails(text);
+            if (parsedDetails.closeDate || parsedDetails.minOrder) {
+                // Update parsedData with user-provided values
+                if (parsedDetails.closeDate && this.pendingState.parsedData) {
+                    this.pendingState.parsedData.close_date = parsedDetails.closeDate;
+                }
+                if (parsedDetails.minOrder && this.pendingState.parsedData) {
+                    this.pendingState.parsedData.min_order = parsedDetails.minOrder;
+                }
+                await this.sock.sendMessage(from, { text: '✅ Data dilengkapi!' });
+                await this.generateDraftFromParsedData(from);
+                return true;
+            }
+            // Invalid format
+            await this.sock.sendMessage(from, {
+                text: `⚠️ Format tidak dikenali.
+
+Contoh:
+• \`15 JAN, 3 pcs\`
+• \`20 JAN\`
+• \`3 pcs\`
+
+Atau kirim */skip* untuk lanjut tanpa.`
+            });
+            return true;
+        }
         // STATE 2: Draft pending - unified command handling
         if (this.pendingState.state === 'draft_pending') {
             const cmd = (0, draftCommands_1.parseDraftCommand)(text);
@@ -660,6 +701,81 @@ Balas dengan angka *1*, *2*, atau *3*`;
             // Parse NOW (after level selection to save 1 API call)
             const parsedData = await this.aiClient.parse(this.pendingState.rawText, this.pendingState.mediaPaths.length, this.pendingState.supplierType || 'fgb');
             logger.info(`Parse successful - format: ${parsedData.format || 'unknown'}`);
+            // Store parsed data and level for later use
+            this.pendingState.parsedData = parsedData;
+            this.pendingState.selectedLevel = level;
+            // Check for missing fields (only for Littlerazy - FGB usually has complete data)
+            if (this.pendingState.supplierType === 'littlerazy') {
+                const missing = [];
+                if (!parsedData.close_date)
+                    missing.push('close_date');
+                if (!parsedData.min_order)
+                    missing.push('min_order');
+                // Note: eta and price should always be present in Littlerazy format
+                if (missing.length > 0) {
+                    // Incomplete data - prompt user
+                    this.pendingState.missingFields = missing;
+                    this.pendingState.state = 'awaiting_details';
+                    this.saveState(from, 'pending', this.pendingState);
+                    const prompts = [];
+                    if (missing.includes('close_date'))
+                        prompts.push('Close PO: (kosong)');
+                    if (missing.includes('min_order'))
+                        prompts.push('Min Order: (kosong)');
+                    await this.sock.sendMessage(from, {
+                        text: `📋 *Data Belum Lengkap*
+
+${prompts.join('\n')}
+
+Balas dengan format:
+\`15 JAN, 3 pcs\`
+
+Atau kirim */skip* untuk lanjut tanpa melengkapi.`
+                    });
+                    logger.info({ missing }, 'Prompting user for missing fields');
+                    return;
+                }
+            }
+            // Data complete - proceed to generate
+            await this.generateDraftFromParsedData(from);
+        }
+        catch (error) {
+            logger.error('Error generating draft:', error);
+            await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+            this.clearPendingState(from);
+        }
+    }
+    /**
+     * Parse user input for missing fields: "15 JAN, 3 pcs" or "15 JAN" or "3"
+     */
+    parseUserDetails(text) {
+        const result = {};
+        // Pattern for date: "15 JAN" or "20 JANUARI" or "DES 25"
+        const dateMatch = text.match(/(\d{1,2})\s*(JAN|FEB|MAR|APR|MEI|MAY|JUN|JUL|AGU|AUG|SEP|OKT|OCT|NOV|DES|DEC)/i);
+        if (dateMatch) {
+            const day = dateMatch[1];
+            const month = dateMatch[2].toUpperCase();
+            result.closeDate = `${day} ${month}`;
+        }
+        // Pattern for min order: "3 pcs" or "3" or "min 5"
+        const minMatch = text.match(/(\d+)\s*(pcs|copies|buku|exemplar)?/i);
+        if (minMatch) {
+            result.minOrder = parseInt(minMatch[1]);
+        }
+        return result;
+    }
+    /**
+     * Generate draft from already-parsed data (used after details are filled or if complete)
+     */
+    async generateDraftFromParsedData(from) {
+        if (!this.pendingState || !this.pendingState.parsedData) {
+            await this.sock.sendMessage(from, { text: '❌ Error: data tidak ditemukan.' });
+            this.clearPendingState(from);
+            return;
+        }
+        const level = this.pendingState.selectedLevel || 2;
+        const parsedData = this.pendingState.parsedData;
+        try {
             // Generate with selected level
             const generated = await this.aiClient.generate(parsedData, level);
             logger.info(`Draft generated with level ${level}`);
@@ -671,12 +787,12 @@ Balas dengan angka *1*, *2*, atau *3*`;
             if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
                 await this.sock.sendMessage(from, {
                     image: { url: mediaPaths[0] },
-                    caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`,
+                    caption: (0, draftCommands_1.formatDraftBubble)(generated.draft, 'broadcast'),
                 });
             }
             else {
                 await this.sock.sendMessage(from, {
-                    text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`,
+                    text: (0, draftCommands_1.formatDraftBubble)(generated.draft, 'broadcast'),
                 });
             }
             // BUBBLE 2: Send unified menu (separate message)
@@ -1095,19 +1211,31 @@ Kirim /done kalau sudah selesai.
         const successItems = this.bulkState.items.filter(item => item.generated && !item.generated.error);
         const levelNames = ['', 'Standard', 'Recommended', 'Racun 🔥'];
         let preview = `📦 *BULK PREVIEW* (${successItems.length} broadcasts, Level ${this.bulkState.level}: ${levelNames[this.bulkState.level]})\n\n`;
+        // Count incomplete items
+        let incompleteCount = 0;
         for (let i = 0; i < successItems.length; i++) {
             const item = successItems[i];
             const title = item.parsedData?.title || 'Untitled';
-            const draft = item.generated?.draft || '';
-            // Truncate draft for preview (first 200 chars)
-            const draftPreview = draft.length > 200
-                ? draft.substring(0, 200) + '...'
-                : draft;
-            preview += `━━━━━━━━━━━━━━━━━━━━\n`;
-            preview += `${i + 1}️⃣ *${title}*\n`;
-            preview += `${draftPreview}\n\n`;
+            const format = item.parsedData?.format || '';
+            const price = item.parsedData?.price_main ? `Rp ${item.parsedData.price_main.toLocaleString('id-ID')}` : '';
+            // Check if item is incomplete (Littlerazy with missing fields)
+            const missingFields = [];
+            if (!item.parsedData?.close_date)
+                missingFields.push('close');
+            if (!item.parsedData?.min_order)
+                missingFields.push('min');
+            const isIncomplete = missingFields.length > 0 && this.bulkState.supplierType === 'littlerazy';
+            if (isIncomplete)
+                incompleteCount++;
+            // Status icon
+            const statusIcon = isIncomplete ? '⚠️' : '✅';
+            const missingNote = isIncomplete ? ` (missing: ${missingFields.join(', ')})` : '';
+            preview += `${i + 1}. ${statusIcon} *${title}* - ${format} ${price}${missingNote}\n`;
         }
-        preview += `━━━━━━━━━━━━━━━━━━━━\n`;
+        if (incompleteCount > 0) {
+            preview += `\n⚠️ ${incompleteCount} item(s) missing data (akan tergenerate tanpa close PO/min order)\n`;
+        }
+        preview += `\n━━━━━━━━━━━━━━━━━━━━\n`;
         preview += `Reply:\n`;
         preview += `• *YES* - Kirim semua ke PRODUCTION\n`;
         preview += `• *YES DEV* - Kirim semua ke DEV\n`;
@@ -1681,12 +1809,12 @@ Kirim /done kalau sudah selesai.
                     if (imagePath && fs_1.default.existsSync(imagePath)) {
                         await this.sock.sendMessage(from, {
                             image: { url: imagePath },
-                            caption: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`
+                            caption: (0, draftCommands_1.formatDraftBubble)(generated.draft, 'broadcast')
                         });
                     }
                     else {
                         await this.sock.sendMessage(from, {
-                            text: `📝 *DRAFT BROADCAST*\n\n${generated.draft}`
+                            text: (0, draftCommands_1.formatDraftBubble)(generated.draft, 'broadcast')
                         });
                     }
                     // BUBBLE 2: Send unified menu (separate message)
@@ -1746,12 +1874,12 @@ Kirim /done kalau sudah selesai.
                 if (imagePath && fs_1.default.existsSync(imagePath)) {
                     await this.sock.sendMessage(from, {
                         image: { url: imagePath },
-                        caption: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}`
+                        caption: (0, draftCommands_1.formatDraftBubble)(this.researchState.draft, 'broadcast')
                     });
                 }
                 else {
                     await this.sock.sendMessage(from, {
-                        text: `📝 *DRAFT BROADCAST*\n\n${this.researchState.draft}`
+                        text: (0, draftCommands_1.formatDraftBubble)(this.researchState.draft, 'broadcast')
                     });
                 }
                 await this.sock.sendMessage(from, {
@@ -1805,12 +1933,12 @@ Kirim /done kalau sudah selesai.
                 if (imagePath && fs_1.default.existsSync(imagePath)) {
                     await this.sock.sendMessage(from, {
                         image: { url: imagePath },
-                        caption: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}`
+                        caption: (0, draftCommands_1.formatDraftBubble)(generated.draft, 'feedback')
                     });
                 }
                 else {
                     await this.sock.sendMessage(from, {
-                        text: `📝 *DRAFT BROADCAST (Updated per feedback)*\n\n${generated.draft}`
+                        text: (0, draftCommands_1.formatDraftBubble)(generated.draft, 'feedback')
                     });
                 }
                 // BUBBLE 2: Menu
@@ -1908,12 +2036,12 @@ Kirim /done kalau sudah selesai.
                     if (imagePath && fs_1.default.existsSync(imagePath)) {
                         await this.sock.sendMessage(from, {
                             image: { url: imagePath },
-                            caption: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}`
+                            caption: (0, draftCommands_1.formatDraftBubble)(updatedDraft, 'updated')
                         });
                     }
                     else {
                         await this.sock.sendMessage(from, {
-                            text: `📝 *DRAFT BROADCAST (Updated)*\n\n${updatedDraft}`
+                            text: (0, draftCommands_1.formatDraftBubble)(updatedDraft, 'updated')
                         });
                     }
                     // BUBBLE 2: Menu
@@ -2352,33 +2480,23 @@ Contoh:
             this.captionState.draft = draft;
             this.captionState.state = 'draft_pending';
             this.captionState.timestamp = Date.now();
-            // Send draft with image
+            // BUBBLE 1: Send draft with image
             if (this.captionState.imagePath && fs_1.default.existsSync(this.captionState.imagePath)) {
                 await this.sock.sendMessage(from, {
                     image: { url: this.captionState.imagePath },
-                    caption: `📝 *DRAFT CAPTION*
-
-${draft}
-
----
-Reply:
-• *YES* - Kirim ke grup PRODUCTION
-• *YES DEV* - Kirim ke grup DEV
-• *REGEN* - Generate ulang
-• *EDIT* - Copy draft untuk edit manual
-• *CANCEL* - Batalkan`
+                    caption: (0, draftCommands_1.formatDraftBubble)(draft, 'caption')
                 });
             }
             else {
                 await this.sock.sendMessage(from, {
-                    text: `📝 *DRAFT CAPTION*
-
-${draft}
-
----
-Reply: YES / YES DEV / REGEN / EDIT / CANCEL`
+                    text: (0, draftCommands_1.formatDraftBubble)(draft, 'caption')
                 });
             }
+            // BUBBLE 2: Send unified menu (separate message)
+            // Caption flow: no COVER/LINKS (image is user-provided), but keep SCHEDULE
+            await this.sock.sendMessage(from, {
+                text: (0, draftCommands_1.getDraftMenu)({ showCover: false, showLinks: false, showRegen: true, showSchedule: true }),
+            });
             logger.info(`Caption draft generated, level=${level}, previewLinks=${analysis.is_series}`);
         }
         catch (error) {
