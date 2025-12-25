@@ -39,15 +39,22 @@ async function main() {
     const sock = await waClient.connect();
     logger.info('WhatsApp client initialized');
 
-    // Setup message handler
-    const ownerJid = process.env.OWNER_JID || '';
-    if (!ownerJid) {
-      logger.error('OWNER_JID not set in environment');
+    // Setup message handler with multiple owners support
+    // Both OWNER_JID and OWNER_LID can be comma-separated for multiple users
+    const ownerJids = [
+      ...(process.env.OWNER_JID || '').split(',').map(j => j.trim()).filter(Boolean),
+      ...(process.env.OWNER_LID || '').split(',').map(j => j.trim()).filter(Boolean),
+    ];
+
+    if (ownerJids.length === 0) {
+      logger.error('No OWNER_JID or OWNER_LID set in environment');
       process.exit(1);
     }
 
+    logger.info(`Authorized owners: ${ownerJids.length} JIDs configured`);
+
     waClient.setupMessageHandler(
-      ownerJid,
+      ownerJids,
       aiClient,
       path.resolve('./media')
     );

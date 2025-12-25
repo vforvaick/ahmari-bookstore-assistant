@@ -91,7 +91,7 @@ export class WhatsAppClient {
   }
 
   setupMessageHandler(
-    ownerJid: string,
+    ownerJids: string | string[],
     aiClient: AIClient,
     mediaPath: string = './media'
   ) {
@@ -99,15 +99,12 @@ export class WhatsAppClient {
       throw new Error('Socket not connected');
     }
 
-    // Determine all valid owner JIDs (Phone + optional LID)
-    const ownerJids = [ownerJid];
-    if (process.env.OWNER_LID) {
-      ownerJids.push(process.env.OWNER_LID);
-    }
+    // Accept both single string or array of owner JIDs
+    const owners = Array.isArray(ownerJids) ? ownerJids : [ownerJids];
 
     this.messageHandler = new MessageHandler(
       this.sock,
-      ownerJids,
+      owners,
       aiClient,
       mediaPath
     );
