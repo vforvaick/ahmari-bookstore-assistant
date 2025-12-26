@@ -91,13 +91,66 @@ interface CaptionState {
 // Utility function for delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ==================== PER-USER STATE ISOLATION ====================
+// Using Maps to store per-user state, preventing race conditions when
+// multiple users send messages simultaneously.
+
 export class MessageHandler {
   private ownerJids: string[];
-  private pendingState: PendingState | null = null;
-  private bulkState: BulkState | null = null;
-  private researchState: ResearchState | null = null;  // For /new command
-  // posterState removed (deprecated)
-  private captionState: CaptionState | null = null;  // For /caption command
+
+  // Per-user state Maps for concurrency isolation
+  private pendingStates: Map<string, PendingState | null> = new Map();
+  private bulkStates: Map<string, BulkState | null> = new Map();
+  private researchStates: Map<string, ResearchState | null> = new Map();
+  private captionStates: Map<string, CaptionState | null> = new Map();
+
+  // Convenience getters/setters for current user (set during handleMessage)
+  private currentUserJid: string = '';
+
+  // Getter/setter wrappers to maintain backward compatibility
+  private get pendingState(): PendingState | null {
+    return this.pendingStates.get(this.currentUserJid) || null;
+  }
+  private set pendingState(value: PendingState | null) {
+    if (value) {
+      this.pendingStates.set(this.currentUserJid, value);
+    } else {
+      this.pendingStates.delete(this.currentUserJid);
+    }
+  }
+
+  private get bulkState(): BulkState | null {
+    return this.bulkStates.get(this.currentUserJid) || null;
+  }
+  private set bulkState(value: BulkState | null) {
+    if (value) {
+      this.bulkStates.set(this.currentUserJid, value);
+    } else {
+      this.bulkStates.delete(this.currentUserJid);
+    }
+  }
+
+  private get researchState(): ResearchState | null {
+    return this.researchStates.get(this.currentUserJid) || null;
+  }
+  private set researchState(value: ResearchState | null) {
+    if (value) {
+      this.researchStates.set(this.currentUserJid, value);
+    } else {
+      this.researchStates.delete(this.currentUserJid);
+    }
+  }
+
+  private get captionState(): CaptionState | null {
+    return this.captionStates.get(this.currentUserJid) || null;
+  }
+  private set captionState(value: CaptionState | null) {
+    if (value) {
+      this.captionStates.set(this.currentUserJid, value);
+    } else {
+      this.captionStates.delete(this.currentUserJid);
+    }
+  }
   private targetGroupJid: string | null;
   private devGroupJid: string | null;
   private scheduledQueue: Array<{
@@ -243,6 +296,9 @@ export class MessageHandler {
         logger.debug(`Ignoring message from non-owner: ${from}`);
         return;
       }
+
+      // Set current user for per-user state isolation (CRITICAL for concurrency!)
+      this.currentUserJid = from;
 
       // Load persisted states for this user (survives restarts)
       this.loadUserStates(from);

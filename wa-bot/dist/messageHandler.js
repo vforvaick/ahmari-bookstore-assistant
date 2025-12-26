@@ -16,17 +16,67 @@ const baileysLoader_1 = require("./baileysLoader");
 const logger = (0, pino_1.default)({ level: process.env.LOG_LEVEL || 'info' });
 // Utility function for delays
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// ==================== PER-USER STATE ISOLATION ====================
+// Using Maps to store per-user state, preventing race conditions when
+// multiple users send messages simultaneously.
 class MessageHandler {
+    // Getter/setter wrappers to maintain backward compatibility
+    get pendingState() {
+        return this.pendingStates.get(this.currentUserJid) || null;
+    }
+    set pendingState(value) {
+        if (value) {
+            this.pendingStates.set(this.currentUserJid, value);
+        }
+        else {
+            this.pendingStates.delete(this.currentUserJid);
+        }
+    }
+    get bulkState() {
+        return this.bulkStates.get(this.currentUserJid) || null;
+    }
+    set bulkState(value) {
+        if (value) {
+            this.bulkStates.set(this.currentUserJid, value);
+        }
+        else {
+            this.bulkStates.delete(this.currentUserJid);
+        }
+    }
+    get researchState() {
+        return this.researchStates.get(this.currentUserJid) || null;
+    }
+    set researchState(value) {
+        if (value) {
+            this.researchStates.set(this.currentUserJid, value);
+        }
+        else {
+            this.researchStates.delete(this.currentUserJid);
+        }
+    }
+    get captionState() {
+        return this.captionStates.get(this.currentUserJid) || null;
+    }
+    set captionState(value) {
+        if (value) {
+            this.captionStates.set(this.currentUserJid, value);
+        }
+        else {
+            this.captionStates.delete(this.currentUserJid);
+        }
+    }
     constructor(sock, ownerJidOrList, aiClient, mediaPath = './media', baileysPromise = (0, baileysLoader_1.loadBaileys)()) {
         this.sock = sock;
         this.aiClient = aiClient;
         this.mediaPath = mediaPath;
         this.baileysPromise = baileysPromise;
-        this.pendingState = null;
-        this.bulkState = null;
-        this.researchState = null; // For /new command
-        // posterState removed (deprecated)
-        this.captionState = null; // For /caption command
+        // Per-user state Maps for concurrency isolation
+        this.pendingStates = new Map();
+        this.bulkStates = new Map();
+        this.researchStates = new Map();
+        this.captionStates = new Map();
+        // Convenience getters/setters for current user (set during handleMessage)
+        this.currentUserJid = '';
         this.scheduledQueue = [];
         this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
         // Production group (default target)
@@ -138,6 +188,8 @@ class MessageHandler {
                 logger.debug(`Ignoring message from non-owner: ${from}`);
                 return;
             }
+            // Set current user for per-user state isolation (CRITICAL for concurrency!)
+            this.currentUserJid = from;
             // Load persisted states for this user (survives restarts)
             this.loadUserStates(from);
             logger.info(`Processing message from owner: ${from}`);
@@ -309,6 +361,8 @@ Nanti aku analisis gambarnya dan buatkan caption promonya!
 
 • /queue → lihat antrian broadcast
 • /flush → kirim semua antrian sekarang
+• /history → lihat riwayat broadcast
+• /search <keyword> → cari broadcast lama
 • /cancel → batalkan proses
 • /status → info bot & config
 • /setmarkup → set markup harga`
