@@ -39,9 +39,10 @@ class QueueScheduler {
     );
 
     // Check queue every 5 minutes
-    cron.schedule('*/5 * * * *', async () => {
-      await this.processQueue();
-    });
+    // LEGACY: Disabled in favor of wa-bot queue poller
+    // cron.schedule('*/5 * * * *', async () => {
+    //   await this.processQueue();
+    // });
 
     logger.info('Scheduler started, checking queue every 5 minutes');
   }
