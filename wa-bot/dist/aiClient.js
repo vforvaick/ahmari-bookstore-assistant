@@ -36,6 +36,7 @@ class AIClient {
     async generate(parsedData, level = 1, userEdit) {
         try {
             logger.info(`Calling AI Processor /generate endpoint (level=${level})`);
+            logger.debug({ parsedData }, 'Request payload');
             const response = await this.client.post('/generate', {
                 parsed_data: parsedData,
                 user_edit: userEdit || null,
@@ -46,6 +47,10 @@ class AIClient {
         }
         catch (error) {
             logger.error('Generate failed:', error.message);
+            // Log detailed error response if available
+            if (error.response?.data) {
+                logger.error({ responseData: error.response.data }, 'API error response');
+            }
             throw new Error(`AI Processor generate failed: ${error.message}`);
         }
     }
