@@ -2,7 +2,7 @@
 GeminiClient - Multi-Model Rotation with API Key Fallback
 
 Strategy: Rotate through models FIRST, then switch API key when all models exhausted.
-Models: gemini-2.5-flash → gemini-2.5-flash-lite → gemini-3-flash
+Models: gemini-2.5-flash → gemini-2.5-flash-lite → gemini-2.0-flash
 This maximizes quota usage across different model rate limits.
 
 Only generates review paragraph + optional publisher guess.
@@ -31,12 +31,13 @@ logger = logging.getLogger(__name__)
 # Available models for rotation (in priority order)
 # gemini-2.5-flash: Primary, best quality
 # gemini-2.5-flash-lite: Faster, good for simple tasks
-# gemini-3-flash: Latest model, may have different rate limits
+# gemini-2.0-flash: Stable fallback model
 AVAILABLE_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-3-flash",
+    "gemini-2.0-flash",
 ]
+
 
 
 class AIReviewResponse(BaseModel):
