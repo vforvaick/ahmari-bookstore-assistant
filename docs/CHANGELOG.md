@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 ### Added
 - **Multi-Owner Config**: Support for comma-separated `OWNER_JID` and `OWNER_LID` lists in `.env`.
+- **Back Navigation (Cancel/Undo)**: Users can now undo accidental selections during all conversation flows.
+  - New commands: `0`, `BACK`, `kembali`, `balik` → go back one step
+  - `RESTART`, `ulang semua` → restart flow from beginning (parsed but handler per-flow)
+  - **PendingState** (forward broadcast): back at supplier shows "first step" message, back at level returns to supplier, back at draft returns to level
+  - **ResearchState** (/new command): back at selection shows "first step", back at details returns to book selection, back at level returns to details
+  - **CaptionState** (image analysis): back at details allows re-send image, back at level returns to details, back at draft returns to level
+  - All prompts updated with navigation hints (`_0/BACK untuk kembali | CANCEL untuk batal_`)
+  - Draft menu now shows `0. *BACK* - kembali ke langkah sebelumnya`
+  - Full state history restoration when going back (preserves previous data)
 
 ## [2.5.0] - 2025-12-26
 

@@ -41,14 +41,15 @@ graph TD
 - **Responsibilities**:
   - Maintains WhatsApp connection via Baileys.
   - Detects forwarded FGB broadcasts using regex patterns.
-  - Handles interactive conversation flow via **Unified Draft System** (YES / SCHEDULE / REGEN / COVER / LINKS).
+  - Handles interactive conversation flow via **Unified Draft System** (YES / SCHEDULE / REGEN / COVER / LINKS / BACK).
+  - **Back Navigation**: Supports undo/back operations (`0` or `BACK`) in all conversation flows by restoring previous state history.
   - **Broadcast History**: Saves all sent and scheduled broadcasts to SQLite (`broadcastStore.ts`).
   - **Queue Polling**: Checks database every 1 minute for scheduled broadcasts and auto-sends them.
   - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
   - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
   - **Poster Mode** (v2.0.0): `/poster` command for creating promotional posters from book covers.
   - Executes final broadcasts to target groups.
-  - Manages conversation state (single, bulk, research, and poster modes) with **Per-User State Isolation** (in-memory Maps) to allow concurrent usage by multiple admins.
+  - Manages conversation state (single, bulk, research, and poster modes) with **Per-User State Isolation** and **History Tracking** (for back navigation).
 
 ### 2. AI Processor Service (Python + FastAPI)
 - **Role**: Logic core for parsing, broadcast generation, and image processing.

@@ -83,6 +83,11 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
   - ✅ Fixed race condition with Per-User State Isolation Map
   - ✅ Both owners can use bot simultaneously
 
+- [x] **Back Navigation (Cancel/Undo)** ✅ (2025-12-26)
+  - ✅ Support for `0`/`BACK` command in all flows
+  - ✅ State history restoration (undo capability)
+  - ✅ Updated prompts with navigation hints
+
 - **Database Persistence** (2025-12-26)
   - ✅ SQLite Broadcast History & Queue
   - ✅ Broadcasts survive restarts
