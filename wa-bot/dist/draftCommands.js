@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseDraftCommand = parseDraftCommand;
 exports.getDraftMenu = getDraftMenu;
 exports.formatDraftBubble = formatDraftBubble;
+exports.getNavigationHints = getNavigationHints;
 /**
  * Parse user input into a DraftCommand
  * Handles all aliases and variations
@@ -73,6 +74,15 @@ function parseDraftCommand(text) {
     if (normalized === 'links' || normalized === 'link') {
         return { action: 'links' };
     }
+    // BACK - go to previous step
+    // Note: '0' is handled specially in each flow's handler since it also means "cancel" in some contexts
+    if (normalized === 'back' || normalized === 'kembali' || normalized === 'balik') {
+        return { action: 'back' };
+    }
+    // RESTART - return to beginning of current flow
+    if (normalized === 'restart' || normalized === 'ulang semua' || normalized === 'mulai lagi') {
+        return { action: 'restart' };
+    }
     // === BULK SELECTION (e.g., "1,2,4" or "1 2 4") ===
     const selectionMatch = normalized.match(/^[\d,\s]+$/);
     if (selectionMatch) {
@@ -110,7 +120,11 @@ function getDraftMenu(options) {
         lines.push('6. *LINKS* - cari link preview');
     }
     lines.push('7. *EDIT* - edit manual');
-    lines.push('8. *CANCEL* - batalkan');
+    // Navigation options
+    if (options.showBack) {
+        lines.push('0. *BACK* - kembali ke langkah sebelumnya');
+    }
+    lines.push('❌ *CANCEL* - batalkan');
     if (options.isBulk) {
         lines.push('');
         lines.push('_Atau pilih item: 1,2,4_');
@@ -133,4 +147,20 @@ function formatDraftBubble(draft, variant = 'broadcast') {
         feedback: '📝 *DRAFT BROADCAST (Updated per feedback)*',
     };
     return `${headings[variant]}\n\n${draft}`;
+}
+/**
+ * Generate consistent navigation hints for selection prompts
+ * @param options - Which hints to show
+ */
+function getNavigationHints(options) {
+    const hints = [];
+    if (options.showBack && !options.isFirstStep) {
+        hints.push('*0* atau *BACK* - kembali');
+    }
+    if (options.showCancel !== false) {
+        hints.push('*CANCEL* - batalkan');
+    }
+    if (hints.length === 0)
+        return '';
+    return '\n---\n' + hints.join(' | ');
 }

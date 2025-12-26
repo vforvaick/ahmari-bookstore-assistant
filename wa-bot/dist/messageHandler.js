@@ -722,15 +722,29 @@ Gunakan /groups untuk lihat JID yang valid.`
         }
         // STATE 0: Supplier selection - waiting for 1 (FGB) or 2 (Littlerazy)
         if (this.pendingState.state === 'supplier_selection') {
+            const trimmedText = text.trim().toLowerCase();
+            // Check for BACK - this is the first step, show message
+            if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
+                await this.sock.sendMessage(from, {
+                    text: '⚠️ Ini sudah langkah pertama. Gunakan *CANCEL* untuk membatalkan.'
+                });
+                return true;
+            }
             // Check for supplier selection
-            if (text.trim() === '1') {
+            if (trimmedText === '1') {
+                // Save current state before transition
+                const { previousState: _, ...currentState } = this.pendingState;
+                this.pendingState.previousState = currentState;
                 this.pendingState.supplierType = 'fgb';
                 this.pendingState.state = 'level_selection';
                 this.saveState(from, 'pending', this.pendingState);
                 await this.showLevelSelection(from);
                 return true;
             }
-            if (text.trim() === '2') {
+            if (trimmedText === '2') {
+                // Save current state before transition
+                const { previousState: _, ...currentState } = this.pendingState;
+                this.pendingState.previousState = currentState;
                 this.pendingState.supplierType = 'littlerazy';
                 this.pendingState.state = 'level_selection';
                 this.saveState(from, 'pending', this.pendingState);
@@ -738,34 +752,55 @@ Gunakan /groups untuk lihat JID yang valid.`
                 return true;
             }
             // Check for CANCEL
-            if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+            if (trimmedText === 'cancel' || trimmedText.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
                 this.clearPendingState(from);
                 return true;
             }
-            // Invalid response - remind user
+            // Invalid response - remind user with navigation hints
             await this.sock.sendMessage(from, {
-                text: '⚠️ Balas dengan *1* (FGB) atau *2* (Littlerazy)'
+                text: '⚠️ Balas dengan *1* (FGB) atau *2* (Littlerazy)\n\n_Atau *CANCEL* untuk batal_'
             });
             return true;
         }
         // STATE 1: Level selection - waiting for 1, 2, or 3
         if (this.pendingState.state === 'level_selection') {
+            const trimmedText = text.trim().toLowerCase();
+            // Check for BACK - return to supplier selection
+            if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
+                // Restore previous state if available
+                if (this.pendingState.previousState) {
+                    const previous = this.pendingState.previousState;
+                    this.pendingState = { ...previous, previousState: undefined, timestamp: Date.now() };
+                }
+                else {
+                    // Fallback: just go back to supplier selection
+                    this.pendingState.state = 'supplier_selection';
+                    this.pendingState.supplierType = undefined;
+                }
+                this.saveState(from, 'pending', this.pendingState);
+                await this.sock.sendMessage(from, { text: '↩️ Kembali ke pilihan supplier.' });
+                await this.showSupplierSelection(from);
+                return true;
+            }
             // Check for numeric level response
-            if (['1', '2', '3'].includes(text.trim())) {
-                const level = parseInt(text.trim());
+            if (['1', '2', '3'].includes(trimmedText)) {
+                const level = parseInt(trimmedText);
+                // Save current state before transition
+                const { previousState: _, ...currentState } = this.pendingState;
+                this.pendingState.previousState = currentState;
                 await this.generateDraftWithLevel(from, level);
                 return true;
             }
             // Check for CANCEL
-            if (text.includes('cancel') || text.includes('batal') || text.includes('skip')) {
+            if (trimmedText === 'cancel' || trimmedText.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
                 this.clearPendingState(from);
                 return true;
             }
-            // Invalid response - remind user
+            // Invalid response - remind user with navigation hints
             await this.sock.sendMessage(from, {
-                text: '⚠️ Balas dengan angka 1, 2, atau 3 untuk pilih level rekomendasi.'
+                text: '⚠️ Balas dengan angka *1*, *2*, atau *3* untuk pilih level.\n\n_0/BACK untuk kembali | CANCEL untuk batal_'
             });
             return true;
         }
@@ -777,8 +812,26 @@ Gunakan /groups untuk lihat JID yang valid.`
                 await this.generateDraftFromParsedData(from);
                 return true;
             }
+            // Handle BACK - return to level selection
+            const trimmedText = text.trim().toLowerCase();
+            if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
+                // Restore to level selection state
+                if (this.pendingState.previousState) {
+                    const previous = this.pendingState.previousState;
+                    this.pendingState = { ...previous, previousState: undefined, timestamp: Date.now() };
+                }
+                else {
+                    this.pendingState.state = 'level_selection';
+                    this.pendingState.parsedData = undefined;
+                    this.pendingState.missingFields = undefined;
+                }
+                this.saveState(from, 'pending', this.pendingState);
+                await this.sock.sendMessage(from, { text: '↩️ Kembali ke pilihan level.' });
+                await this.showLevelSelection(from);
+                return true;
+            }
             // Handle CANCEL
-            if (text.includes('cancel') || text.includes('batal')) {
+            if (trimmedText === 'cancel' || trimmedText.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
                 this.clearPendingState(from);
                 return true;
@@ -806,7 +859,7 @@ Contoh:
 • \`20 JAN\`
 • \`3 pcs\`
 
-Atau kirim */skip* untuk lanjut tanpa.`
+_0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
             });
             return true;
         }
@@ -850,9 +903,53 @@ Atau kirim */skip* untuk lanjut tanpa.`
                     await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
                     this.clearPendingState(from);
                     return true;
+                case 'back':
+                    // Return to level selection to choose different level
+                    if (this.pendingState.previousState) {
+                        const previous = this.pendingState.previousState;
+                        this.pendingState = { ...previous, previousState: undefined, timestamp: Date.now() };
+                    }
+                    else {
+                        // Fallback: clear draft-specific data and return to level selection
+                        this.pendingState.state = 'level_selection';
+                        this.pendingState.draft = undefined;
+                    }
+                    this.saveState(from, 'pending', this.pendingState);
+                    await this.sock.sendMessage(from, { text: '↩️ Kembali ke pilihan level.' });
+                    await this.showLevelSelection(from);
+                    return true;
             }
         }
         return false;
+    }
+    /**
+     * Show level selection prompt (called after supplier is selected)
+     */
+    /**
+     * Show supplier selection prompt (used when re-showing after BACK)
+     */
+    async showSupplierSelection(from) {
+        if (!this.pendingState)
+            return;
+        const supplierMessage = `📦 *Pilih Supplier:*
+
+1️⃣ *FGB* - Fahasa/Gramedia/Bukupedia
+2️⃣ *Littlerazy* - Format Littlerazy
+
+---
+Balas dengan angka *1* atau *2*
+_*CANCEL* untuk batal_`;
+        if (this.pendingState.mediaPaths.length > 0) {
+            await this.sock.sendMessage(from, {
+                image: { url: this.pendingState.mediaPaths[0] },
+                caption: supplierMessage,
+            });
+        }
+        else {
+            await this.sock.sendMessage(from, {
+                text: supplierMessage,
+            });
+        }
     }
     /**
      * Show level selection prompt (called after supplier is selected)
@@ -869,7 +966,8 @@ Pilih level rekomendasi:
 3️⃣ *Top Pick* ⭐ - Racun belanja! + marker "Top Pick Ahmari Bookstore"
 
 ---
-Balas dengan angka *1*, *2*, atau *3*`;
+Balas dengan angka *1*, *2*, atau *3*
+_0/BACK untuk kembali | CANCEL untuk batal_`;
         if (this.pendingState.mediaPaths.length > 0) {
             await this.sock.sendMessage(from, {
                 image: { url: this.pendingState.mediaPaths[0] },
@@ -952,7 +1050,9 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
         // Pattern for min order: "3 pcs" or "3" or "min 5"
         const minMatch = text.match(/(\d+)\s*(pcs|copies|buku|exemplar)?/i);
         if (minMatch) {
-            result.minOrder = parseInt(minMatch[1]);
+            const count = minMatch[1];
+            const unit = minMatch[2] || 'pcs';
+            result.minOrder = `${count} ${unit}`;
         }
         return result;
     }
@@ -989,7 +1089,7 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
             }
             // BUBBLE 2: Send unified menu (separate message)
             await this.sock.sendMessage(from, {
-                text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+                text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
             });
         }
         catch (error) {
@@ -2002,22 +2102,59 @@ Kirim /done kalau sudah selesai.
                 });
                 return true;
             }
+            // Handle BACK - this is the first step, show message
+            if (lowerText === '0' || lowerText === 'back' || lowerText === 'kembali' || lowerText === 'balik') {
+                await this.sock.sendMessage(from, {
+                    text: '⚠️ Ini sudah langkah pertama. Gunakan *CANCEL* untuk membatalkan pencarian.'
+                });
+                return true;
+            }
             // Check for cancel
-            if (text.includes('cancel') || text.includes('batal')) {
+            if (lowerText === 'cancel' || lowerText.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
                 this.clearResearchState(from);
                 return true;
             }
             // Invalid selection
             await this.sock.sendMessage(from, {
-                text: `⚠️ Pilih angka 1-${this.researchState.results?.length}.\nAtau kirim /cancel untuk batal.`
+                text: `⚠️ Pilih angka 1-${this.researchState.results?.length}.
+
+_0/BACK untuk info | CANCEL untuk batal_`
             });
             return true;
         }
         // STATE 2: Waiting for details (price, format, eta, close)
         if (this.researchState.state === 'details_pending') {
+            const lowerText = text.trim().toLowerCase();
+            // Handle BACK - return to book selection
+            if (lowerText === '0' || lowerText === 'back' || lowerText === 'kembali' || lowerText === 'balik') {
+                // Save current state before going back
+                const { previousState: _, ...currentState } = this.researchState;
+                this.researchState.previousState = currentState;
+                // Clear selections and go back to selection
+                this.researchState.state = 'selection_pending';
+                this.researchState.selectedBook = undefined;
+                this.researchState.details = undefined;
+                this.researchState.displayTitle = undefined;
+                this.researchState.imagePath = undefined;
+                this.saveState(from, 'research', this.researchState);
+                await this.sock.sendMessage(from, { text: '↩️ Kembali ke pilihan buku.' });
+                // Re-show first page of results
+                const pageSize = 5;
+                const endIdx = Math.min(pageSize, this.researchState.results?.length || 0);
+                for (let i = 0; i < endIdx; i++) {
+                    const book = this.researchState.results[i];
+                    const caption = `*${i + 1}. ${book.title}*`;
+                    await this.sock.sendMessage(from, { text: caption });
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                await this.sock.sendMessage(from, {
+                    text: `---\nBalas dengan *angka* (1-${endIdx}) untuk pilih buku.`
+                });
+                return true;
+            }
             // Check for cancel
-            if (text.includes('cancel') || text.includes('batal')) {
+            if (lowerText === 'cancel' || lowerText.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
                 this.clearResearchState(from);
                 return true;
@@ -2026,14 +2163,33 @@ Kirim /done kalau sudah selesai.
             const details = this.parseResearchDetails(text);
             if (!details || !details.price) {
                 await this.sock.sendMessage(from, {
-                    text: `⚠️ Format tidak valid.\n\nContoh: 350000 hb jan 26 close 25 dec\n\nMinimum: <harga> (angka)`
+                    text: `⚠️ Format tidak valid.
+
+Contoh: 350000 hb jan 26 close 25 dec
+
+Minimum: <harga> (angka)
+
+_0/BACK untuk kembali | CANCEL untuk batal_`
                 });
                 return true;
             }
             this.researchState.details = details;
             // Ask for level
             await this.sock.sendMessage(from, {
-                text: `✅ Detail tersimpan:\n💰 Harga: Rp ${details.price.toLocaleString('id-ID')}\n📦 Format: ${details.format || 'HB'}\n📅 ETA: ${details.eta || '-'}\n🔒 Close: ${details.closeDate || '-'}\n\n---\nPilih level rekomendasi:\n\n1️⃣ *Standard* - Informatif\n2️⃣ *Recommended* - Persuasif\n3️⃣ *Top Pick* ⭐ - Racun!\n\nBalas dengan angka *1*, *2*, atau *3*`
+                text: `✅ Detail tersimpan:
+💰 Harga: Rp ${details.price.toLocaleString('id-ID')}
+📦 Format: ${details.format || 'HB'}
+📅 ETA: ${details.eta || '-'}
+🔒 Close: ${details.closeDate || '-'}
+
+---
+Pilih level rekomendasi:
+
+1️⃣ *Standard* - Informatif
+2️⃣ *Recommended* - Persuasif
+3️⃣ *Top Pick* ⭐ - Racun!
+
+_0/BACK untuk kembali | CANCEL untuk batal_`
             });
             this.researchState.state = 'draft_pending';
             this.researchState.timestamp = Date.now();
@@ -2082,7 +2238,7 @@ Kirim /done kalau sudah selesai.
                     }
                     // BUBBLE 2: Send unified menu (separate message)
                     await this.sock.sendMessage(from, {
-                        text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+                        text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
                     });
                     logger.info('Research draft generated');
                     return true;
@@ -2096,14 +2252,27 @@ Kirim /done kalau sudah selesai.
                     return true;
                 }
             }
+            const lowerText = text.trim().toLowerCase();
+            // Handle BACK - return to details input
+            if (lowerText === '0' || lowerText === 'back' || lowerText === 'kembali' || lowerText === 'balik') {
+                // Clear details and go back to details_pending
+                this.researchState.state = 'details_pending';
+                this.researchState.details = undefined;
+                this.saveState(from, 'research', this.researchState);
+                await this.sock.sendMessage(from, { text: '↩️ Kembali ke input detail.' });
+                await this.sock.sendMessage(from, {
+                    text: `📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n\n_0/BACK untuk kembali | CANCEL untuk batal_`
+                });
+                return true;
+            }
             // Check for cancel
-            if (text.includes('cancel') || text.includes('batal')) {
+            if (lowerText === 'cancel' || lowerText.includes('batal')) {
                 await this.sock.sendMessage(from, { text: '❌ Pencarian dibatalkan.' });
                 this.clearResearchState(from);
                 return true;
             }
             await this.sock.sendMessage(from, {
-                text: '⚠️ Pilih level: 1, 2, atau 3'
+                text: '⚠️ Pilih level: *1*, *2*, atau *3*\n\n_0/BACK untuk kembali | CANCEL untuk batal_'
             });
             return true;
         }
@@ -2146,7 +2315,7 @@ Kirim /done kalau sudah selesai.
                     });
                 }
                 await this.sock.sendMessage(from, {
-                    text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+                    text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
                 });
                 return true;
             }
@@ -2206,7 +2375,7 @@ Kirim /done kalau sudah selesai.
                 }
                 // BUBBLE 2: Menu
                 await this.sock.sendMessage(from, {
-                    text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+                    text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
                 });
                 return true;
             }
@@ -2309,7 +2478,7 @@ Kirim /done kalau sudah selesai.
                     }
                     // BUBBLE 2: Menu
                     await this.sock.sendMessage(from, {
-                        text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true }),
+                        text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
                     });
                     logger.info(`Updated draft with ${newLinks.length} new preview links`);
                     return true;
@@ -2502,6 +2671,21 @@ Reply *CANCEL* untuk batalkan.`
         }
         // STATE: Awaiting details (price, format, eta, close)
         if (this.captionState.state === 'awaiting_details') {
+            // Handle BACK - return to awaiting_image (re-send image)
+            if (lowerText === '0' || lowerText === 'back' || lowerText === 'kembali' || lowerText === 'balik') {
+                // Save current state for potential restoration
+                const { previousState: _, ...currentState } = this.captionState;
+                this.captionState.previousState = currentState;
+                // Clear image and analysis, return to awaiting_image
+                this.captionState.state = 'awaiting_image';
+                this.captionState.imagePath = undefined;
+                this.captionState.analysis = undefined;
+                this.saveState(from, 'caption', this.captionState);
+                await this.sock.sendMessage(from, {
+                    text: '↩️ Kembali. Kirim gambar cover lagi jika ingin mengganti.'
+                });
+                return true;
+            }
             const details = this.parseCaptionDetails(text);
             if (!details) {
                 await this.sock.sendMessage(from, {
@@ -2509,10 +2693,13 @@ Reply *CANCEL* untuk batalkan.`
 • 175000 bb apr26 close 20des
 • 125000 hb mei26
 
-Reply dengan: [harga] [format] [eta] [close date]`
+_0/BACK untuk kirim ulang gambar | CANCEL untuk batal_`
                 });
                 return true;
             }
+            // Save current state before transition
+            const { previousState: _, ...currentState } = this.captionState;
+            this.captionState.previousState = currentState;
             this.captionState.details = details;
             this.captionState.state = 'level_selection';
             this.captionState.timestamp = Date.now();
@@ -2526,19 +2713,39 @@ ${details.closeDate ? `⏰ Close: ${details.closeDate}` : ''}
 Pilih level rekomendasi:
 *1* - Standard (informatif)
 *2* - Recommended (persuasif)
-*3* - Top Pick (racun mode 🔥)`
+*3* - Top Pick (racun mode 🔥)
+
+_0/BACK untuk kembali | CANCEL untuk batal_`
             });
             return true;
         }
         // STATE: Level selection
         if (this.captionState.state === 'level_selection') {
+            // Handle BACK - return to details input
+            if (lowerText === '0' || lowerText === 'back' || lowerText === 'kembali' || lowerText === 'balik') {
+                // Restore to awaiting_details
+                if (this.captionState.previousState) {
+                    const previous = this.captionState.previousState;
+                    this.captionState = { ...previous, previousState: undefined, timestamp: Date.now() };
+                }
+                else {
+                    this.captionState.state = 'awaiting_details';
+                    this.captionState.details = undefined;
+                }
+                this.saveState(from, 'caption', this.captionState);
+                await this.sock.sendMessage(from, { text: '↩️ Kembali ke input detail.' });
+                await this.sock.sendMessage(from, {
+                    text: `📝 *Masukkan detail:*\nFormat: [harga] [format] [eta] [close]\n\nContoh: 175000 bb apr26 close 20des\n\n_0/BACK untuk kirim ulang gambar | CANCEL untuk batal_`
+                });
+                return true;
+            }
             if (['1', '2', '3'].includes(lowerText)) {
                 const level = parseInt(lowerText);
                 await this.generateCaptionDraft(from, level);
                 return true;
             }
             await this.sock.sendMessage(from, {
-                text: '⚠️ Balas dengan 1, 2, atau 3'
+                text: '⚠️ Balas dengan *1*, *2*, atau *3*\n\n_0/BACK untuk kembali | CANCEL untuk batal_'
             });
             return true;
         }
@@ -2580,6 +2787,22 @@ Pilih level rekomendasi:
                 case 'cancel':
                     await this.sock.sendMessage(from, { text: '❌ Caption dibatalkan.' });
                     this.clearCaptionState(from);
+                    return true;
+                case 'back':
+                    // Return to level selection
+                    if (this.captionState.previousState) {
+                        const previous = this.captionState.previousState;
+                        this.captionState = { ...previous, previousState: undefined, timestamp: Date.now() };
+                    }
+                    else {
+                        this.captionState.state = 'level_selection';
+                        this.captionState.draft = undefined;
+                    }
+                    this.saveState(from, 'caption', this.captionState);
+                    await this.sock.sendMessage(from, { text: '↩️ Kembali ke pilihan level.' });
+                    await this.sock.sendMessage(from, {
+                        text: `Pilih level lagi:\n*1* - Standard | *2* - Recommended | *3* - Top Pick\n\n_0/BACK untuk kembali | CANCEL untuk batal_`
+                    });
                     return true;
             }
         }
@@ -2758,7 +2981,7 @@ Contoh:
             // BUBBLE 2: Send unified menu (separate message)
             // Caption flow: no COVER/LINKS (image is user-provided), but keep SCHEDULE
             await this.sock.sendMessage(from, {
-                text: (0, draftCommands_1.getDraftMenu)({ showCover: false, showLinks: false, showRegen: true, showSchedule: true }),
+                text: (0, draftCommands_1.getDraftMenu)({ showCover: false, showLinks: false, showRegen: true, showSchedule: true, showBack: true }),
             });
             logger.info(`Caption draft generated, level=${level}, previewLinks=${analysis.is_series}`);
         }

@@ -1269,8 +1269,8 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
   /**
    * Parse user input for missing fields: "15 JAN, 3 pcs" or "15 JAN" or "3"
    */
-  private parseUserDetails(text: string): { closeDate?: string; minOrder?: number } {
-    const result: { closeDate?: string; minOrder?: number } = {};
+  private parseUserDetails(text: string): { closeDate?: string; minOrder?: string } {
+    const result: { closeDate?: string; minOrder?: string } = {};
 
     // Pattern for date: "15 JAN" or "20 JANUARI" or "DES 25"
     const dateMatch = text.match(/(\d{1,2})\s*(JAN|FEB|MAR|APR|MEI|MAY|JUN|JUL|AGU|AUG|SEP|OKT|OCT|NOV|DES|DEC)/i);
@@ -1283,7 +1283,9 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
     // Pattern for min order: "3 pcs" or "3" or "min 5"
     const minMatch = text.match(/(\d+)\s*(pcs|copies|buku|exemplar)?/i);
     if (minMatch) {
-      result.minOrder = parseInt(minMatch[1]);
+      const count = minMatch[1];
+      const unit = minMatch[2] || 'pcs';
+      result.minOrder = `${count} ${unit}`;
     }
 
     return result;
