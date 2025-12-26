@@ -1036,7 +1036,11 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
         }
     }
     /**
-     * Parse user input for missing fields: "15 JAN, 3 pcs" or "15 JAN" or "3"
+     * Parse user input for missing fields: "15 JAN, 3 pcs" or "15 JAN" or "3 pcs"
+     *
+     * Rules:
+     * - Date: number followed by month name (15 JAN, 20 DES)
+     * - Min order: number followed by unit (3 pcs, 5 buku) OR standalone number NOT part of date
      */
     parseUserDetails(text) {
         const result = {};
@@ -1047,8 +1051,9 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
             const month = dateMatch[2].toUpperCase();
             result.closeDate = `${day} ${month}`;
         }
-        // Pattern for min order: "3 pcs" or "3" or "min 5"
-        const minMatch = text.match(/(\d+)\s*(pcs|copies|buku|exemplar)?/i);
+        // Pattern for min order: MUST have unit keyword to avoid matching date numbers
+        // Matches: "3 pcs", "5 buku", "min 3", "3pcs"
+        const minMatch = text.match(/(?:min\s*)?(\d+)\s*(pcs|copies|buku|exemplar|copy)/i);
         if (minMatch) {
             const count = minMatch[1];
             const unit = minMatch[2] || 'pcs';
