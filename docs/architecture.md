@@ -48,7 +48,7 @@ graph TD
   - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
   - **Poster Mode** (v2.0.0): `/poster` command for creating promotional posters from book covers.
   - Executes final broadcasts to target groups.
-  - Manages conversation state (single, bulk, research, and poster modes).
+  - Manages conversation state (single, bulk, research, and poster modes) with **Per-User State Isolation** (in-memory Maps) to allow concurrent usage by multiple admins.
 
 ### 2. AI Processor Service (Python + FastAPI)
 - **Role**: Logic core for parsing, broadcast generation, and image processing.

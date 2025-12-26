@@ -78,6 +78,15 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 
 ## Recently Completed
+- **Multi-Owner & Concurrency Fix** (2025-12-26)
+  - ✅ Support for multiple admins (Comma-separated .env)
+  - ✅ Fixed race condition with Per-User State Isolation Map
+  - ✅ Both owners can use bot simultaneously
+
+- **Database Persistence** (2025-12-26)
+  - ✅ SQLite Broadcast History & Queue
+  - ✅ Broadcasts survive restarts
+
 - **UX: Revamped /help Command** (2025-12-25)
   - ✅ Friendly greeting & visual separators
   - ✅ Use-case driven structure (Broadcast vs Image)

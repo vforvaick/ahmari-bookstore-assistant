@@ -3,9 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
-
 ### Added
-- **Database: Broadcast History & Persistent Queue** (2025-12-26):
+- **Multi-Owner Config**: Support for comma-separated `OWNER_JID` and `OWNER_LID` lists in `.env`.
+
+## [2.5.0] - 2025-12-26
+
   - New `broadcastStore.ts` module for SQLite-based broadcast persistence
   - `/history [N]` command to view recent broadcasts (default: 5)
   - `/search <keyword>` command with FTS5 full-text search
@@ -13,6 +15,13 @@ All notable changes to this project will be documented in this file.
   - Queue processor polls every minute for auto-sending scheduled broadcasts
   - `/queue` and `/flush` now read from persistent database
   - **Benefit**: No more lost scheduled broadcasts on deploy/restart
+
+### Fixed
+- **Multi-User Concurrency Issue** (2025-12-26):
+  - Replaced class-level state variables with per-user Maps
+  - Added getter/setter wrappers for backward compatibility
+  - Set `currentUserJid` at start of `handleMessage()` for isolation
+  - **Benefit**: Multiple owners can now message bot simultaneously without interference
 
 - **UX: Revamped `/help` Command** (2025-12-25):
   - Completely rewritten to be human-friendly and use-case driven.
