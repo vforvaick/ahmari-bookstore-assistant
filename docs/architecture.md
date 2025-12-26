@@ -21,30 +21,29 @@ graph TD
     WABot -->|Approval Request| User
     User -->|YES/EDIT/SCHEDULE| WABot
     
-    WABot -->|Job Payload| Scheduler[Queue Scheduler]
-    Scheduler -->|Cron Trigger| WABot
+    WABot -->|Save Scheduled| DB[(SQLite Database)]
     
-    WABot -->|Poster Request| AI
+    WABot -->|Available?| AI
     AI -->|Poster Image| WABot
     AI -->|Generate Background| Gemini
     
+    WABot -- Queue Poller --> DB
+    
     WABot -->|Persist| DB[(SQLite Database)]
-    Scheduler -->|Read Queue| DB
     
     WABot -->|Final Broadcast| Group([WhatsApp Group])
-    
-    Scheduler -->|Trigger Broadcast| Telegram[Telegram Bot Service]
-    Telegram -->|Send| TGChannel([Telegram Channel])
 ```
 
 ## Core Components
 
 ### 1. WhatsApp Bot Service (Node.js + Baileys)
-- **Role**: WhatsApp connection handler, message interception, and user interaction.
+- **Role**: WhatsApp connection handler, message interception, user interaction, and **Queue Manager**.
 - **Responsibilities**:
   - Maintains WhatsApp connection via Baileys.
   - Detects forwarded FGB broadcasts using regex patterns.
   - Handles interactive conversation flow via **Unified Draft System** (YES / SCHEDULE / REGEN / COVER / LINKS).
+  - **Broadcast History**: Saves all sent and scheduled broadcasts to SQLite (`broadcastStore.ts`).
+  - **Queue Polling**: Checks database every 1 minute for scheduled broadcasts and auto-sends them.
   - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
   - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
   - **Poster Mode** (v2.0.0): `/poster` command for creating promotional posters from book covers.
@@ -72,10 +71,10 @@ graph TD
   - **Multi-Model Rotation** (v2.2.0):
     - **Strategy**: Rotates `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-3-flash` per API key to maximize quota.
   - **Advanced Researcher** (v1.8.2):
-- **Flow:** `/new` (search) → Select Book → Details (Price/Format) → Level (1-3) → Draft
-- **Draft Options:** YES / YES DEV / COVER / LINKS / REGEN / EDIT / CANCEL
-- **Feedback Loop:** REGEN option asks for user feedback ("too long", "add info") → AI regenerates with instruction
-- **Publisher Extraction:** Robust 3-layer system (URL domain → Snippet → AI Guess)
+    - **Flow:** `/new` (search) → Select Book → Details (Price/Format) → Level (1-3) → Draft
+    - **Draft Options:** YES / YES DEV / COVER / LINKS / REGEN / EDIT / CANCEL
+    - **Feedback Loop:** REGEN option asks for user feedback ("too long", "add info") → AI regenerates with instruction
+    - **Publisher Extraction:** Robust 3-layer system (URL domain → Snippet → AI Guess)
   - **Web Research** (v1.6.0, enhanced in v1.8.0):
     - `book_researcher.py`: Google Custom Search API integration for finding book info.
     - `/research` endpoint: Search books by title/query.
@@ -87,11 +86,10 @@ graph TD
   - Runtime configurable price markup via `/config` endpoint.
 
 ### 3. Queue Scheduler Service (Node.js)
-- **Role**: Timer-based job runner.
+- **Role**: Legacy / Backup.
+- **Status**: Functionality migrated to **WhatsApp Bot Service** (via polling).
 - **Responsibilities**:
-  - Processes the broadcast queue.
-  - Enforces a 47-minute anti-spam interval between broadcasts.
-  - Handles retries and status updates.
+  - *Deprecated*: Previously handled cron-based queue processing. Now `wa-bot` handles this directly to ensure access to WhatsApp socket.
 
 ### 4. Telegram Bot Service ~~(Removed - deprecated v2.3.0)~~
 - Previously: Secondary broadcast channel to Telegram.

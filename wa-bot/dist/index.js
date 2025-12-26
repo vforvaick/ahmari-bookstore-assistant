@@ -8,6 +8,7 @@ const pino_1 = __importDefault(require("pino"));
 const whatsapp_1 = require("./whatsapp");
 const aiClient_1 = require("./aiClient");
 const stateStore_1 = require("./stateStore");
+const broadcastStore_1 = require("./broadcastStore");
 const path_1 = __importDefault(require("path"));
 (0, dotenv_1.config)();
 const logger = (0, pino_1.default)({ level: 'info' });
@@ -30,19 +31,27 @@ async function main() {
     const dbPath = process.env.DATABASE_PATH || path_1.default.resolve('./data/bookstore.db');
     (0, stateStore_1.initStateStore)(dbPath);
     logger.info('✓ StateStore initialized');
+    // Initialize BroadcastStore for broadcast history and queue persistence
+    (0, broadcastStore_1.initBroadcastStore)(dbPath);
+    logger.info('✓ BroadcastStore initialized');
     // Initialize WhatsApp client
     const sessionsPath = path_1.default.resolve('./sessions');
     const waClient = new whatsapp_1.WhatsAppClient(sessionsPath);
     try {
         const sock = await waClient.connect();
         logger.info('WhatsApp client initialized');
-        // Setup message handler
-        const ownerJid = process.env.OWNER_JID || '';
-        if (!ownerJid) {
-            logger.error('OWNER_JID not set in environment');
+        // Setup message handler with multiple owners support
+        // Both OWNER_JID and OWNER_LID can be comma-separated for multiple users
+        const ownerJids = [
+            ...(process.env.OWNER_JID || '').split(',').map(j => j.trim()).filter(Boolean),
+            ...(process.env.OWNER_LID || '').split(',').map(j => j.trim()).filter(Boolean),
+        ];
+        if (ownerJids.length === 0) {
+            logger.error('No OWNER_JID or OWNER_LID set in environment');
             process.exit(1);
         }
-        waClient.setupMessageHandler(ownerJid, aiClient, path_1.default.resolve('./media'));
+        logger.info(`Authorized owners: ${ownerJids.length} JIDs configured`);
+        waClient.setupMessageHandler(ownerJids, aiClient, path_1.default.resolve('./media'));
         logger.info('Message handler setup complete');
         // Keep process running
         process.on('SIGINT', async () => {

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Database: Broadcast History & Persistent Queue** (2025-12-26):
+  - New `broadcastStore.ts` module for SQLite-based broadcast persistence
+  - `/history [N]` command to view recent broadcasts (default: 5)
+  - `/search <keyword>` command with FTS5 full-text search
+  - Scheduled broadcasts now saved to database, survive restarts
+  - Queue processor polls every minute for auto-sending scheduled broadcasts
+  - `/queue` and `/flush` now read from persistent database
+  - **Benefit**: No more lost scheduled broadcasts on deploy/restart
+
 - **UX: Revamped `/help` Command** (2025-12-25):
   - Completely rewritten to be human-friendly and use-case driven.
   - Added "Halo!" greeting and visual separators.

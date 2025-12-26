@@ -2,6 +2,7 @@ import pino from 'pino';
 import { detectFGBBroadcast, DetectionResult } from './detector';
 import { AIClient, GenerateResponse, BookSearchResult, BookSearchResponse, CaptionAnalysisResult, CaptionGenerateRequest } from './aiClient';
 import { getStateStore, StateType } from './stateStore';
+import { getBroadcastStore } from './broadcastStore';
 import { parseDraftCommand, getDraftMenu, formatDraftBubble, DraftCommand } from './draftCommands';
 import path from 'path';
 import fs from 'fs';
@@ -133,6 +134,61 @@ export class MessageHandler {
     if (!fs.existsSync(mediaPath)) {
       fs.mkdirSync(mediaPath, { recursive: true });
     }
+
+    // Start queue processor (polls every minute for scheduled broadcasts)
+    this.startQueueProcessor();
+  }
+
+  /**
+   * Poll database queue and send broadcasts when scheduled time is reached
+   */
+  private startQueueProcessor() {
+    const POLL_INTERVAL_MS = 60 * 1000; // 1 minute
+
+    setInterval(async () => {
+      try {
+        const nextItem = getBroadcastStore().getNextPendingItem();
+
+        if (!nextItem) {
+          return; // Nothing to send
+        }
+
+        logger.info({ queueId: nextItem.id, title: nextItem.title }, 'Processing scheduled broadcast');
+
+        // Parse media_paths
+        const mediaPaths: string[] = nextItem.media_paths
+          ? (typeof nextItem.media_paths === 'string' ? JSON.parse(nextItem.media_paths) : nextItem.media_paths)
+          : [];
+
+        // Send to target group
+        const targetJid = this.targetGroupJid;
+        if (!targetJid) {
+          logger.error('Cannot auto-send: TARGET_GROUP_JID not set');
+          getBroadcastStore().markQueueItemFailed(nextItem.id, 'TARGET_GROUP_JID not set');
+          return;
+        }
+
+        if (mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+          await this.sock.sendMessage(targetJid, {
+            image: { url: mediaPaths[0] },
+            caption: nextItem.description_id || ''
+          });
+        } else {
+          await this.sock.sendMessage(targetJid, {
+            text: nextItem.description_id || '(empty broadcast)'
+          });
+        }
+
+        // Mark as sent
+        getBroadcastStore().markQueueItemSent(nextItem.id);
+        logger.info(`✅ Auto-sent scheduled broadcast: "${nextItem.title}"`);
+
+      } catch (error: any) {
+        logger.error('Queue processor error:', error);
+      }
+    }, POLL_INTERVAL_MS);
+
+    logger.info('Queue processor started (polling every 1 min)');
   }
 
   // ==================== STATE PERSISTENCE HELPERS ====================
@@ -327,6 +383,14 @@ export class MessageHandler {
           await this.setSupplier(from, args);
           return true;
 
+        case '/history':
+          await this.sendBroadcastHistory(from, args);
+          return true;
+
+        case '/search':
+          await this.searchBroadcastHistory(from, args);
+          return true;
+
         // /poster removed (deprecated)
 
         // /caption removed - now auto-detected from image-only messages
@@ -374,6 +438,8 @@ Nanti aku analisis gambarnya dan buatkan caption promonya!
 
 • /queue → lihat antrian broadcast
 • /flush → kirim semua antrian sekarang
+• /history → lihat riwayat broadcast
+• /search <keyword> → cari broadcast lama
 • /cancel → batalkan proses
 • /status → info bot & config
 • /setmarkup → set markup harga`
@@ -432,96 +498,105 @@ ${ownerList}`
   }
 
   private async sendQueueStatus(from: string) {
-    // Clean up expired items
-    const now = new Date();
-    this.scheduledQueue = this.scheduledQueue.filter(item => item.scheduledTime > now);
+    try {
+      const dbQueue = getBroadcastStore().getPendingQueue();
 
-    if (this.scheduledQueue.length === 0) {
-      await this.sock.sendMessage(from, {
-        text: '📭 *Antrian Kosong*\n\nTidak ada broadcast terjadwal.'
-      });
-      return;
+      if (dbQueue.length === 0) {
+        await this.sock.sendMessage(from, {
+          text: '📭 *Antrian Kosong*\n\nTidak ada broadcast terjadwal.'
+        });
+        return;
+      }
+
+      const now = new Date();
+      let queueMsg = `📋 *Antrian Broadcast* (${dbQueue.length} items)\n\n`;
+
+      for (let i = 0; i < dbQueue.length; i++) {
+        const item = dbQueue[i];
+        const scheduledTime = new Date(item.scheduled_time);
+        const minutesLeft = Math.round((scheduledTime.getTime() - now.getTime()) / 60000);
+        const timeStr = scheduledTime.toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Asia/Jakarta'
+        });
+
+        queueMsg += `${i + 1}. *${item.title || 'Untitled'}*\n`;
+        queueMsg += `   ⏰ ${timeStr} (${minutesLeft > 0 ? minutesLeft + ' menit lagi' : 'segera'})\n\n`;
+      }
+
+      queueMsg += `💾 Data tersimpan di database - survive restart!`;
+
+      await this.sock.sendMessage(from, { text: queueMsg });
+    } catch (error: any) {
+      logger.error('Error getting queue status:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
     }
-
-    // Sort by scheduled time
-    const sorted = this.scheduledQueue.sort((a, b) => a.scheduledTime.getTime() - b.scheduledTime.getTime());
-
-    let queueMsg = `📋 *Antrian Broadcast* (${sorted.length} items)\n\n`;
-
-    for (let i = 0; i < sorted.length; i++) {
-      const item = sorted[i];
-      const minutesLeft = Math.round((item.scheduledTime.getTime() - now.getTime()) / 60000);
-      const timeStr = item.scheduledTime.toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Asia/Jakarta'
-      });
-      const groupIcon = item.targetGroup === 'PRODUCTION' ? '🚀' : '🛠️';
-
-      queueMsg += `${i + 1}. ${item.title}\n`;
-      queueMsg += `   ⏰ ${timeStr} (${minutesLeft} menit lagi) ${groupIcon}\n\n`;
-    }
-
-    queueMsg += `⚠️ Jadwal hilang jika bot restart.`;
-
-    await this.sock.sendMessage(from, { text: queueMsg });
   }
 
   private async flushQueue(from: string) {
-    if (this.scheduledQueue.length === 0) {
-      await this.sock.sendMessage(from, {
-        text: '📭 *Antrian Kosong*\n\nTidak ada broadcast untuk di-flush.'
-      });
-      return;
-    }
+    try {
+      const dbQueue = getBroadcastStore().getPendingQueue();
 
-    const itemsToSend = [...this.scheduledQueue];
-
-    // Cancel all scheduled timeouts
-    for (const item of itemsToSend) {
-      clearTimeout(item.timeoutId);
-    }
-
-    // Clear the queue
-    this.scheduledQueue = [];
-
-    await this.sock.sendMessage(from, {
-      text: `🚀 *FLUSH MODE*\n\nMengirim ${itemsToSend.length} broadcast sekarang dengan interval 10-15 detik...`
-    });
-
-    let sentCount = 0;
-    for (let i = 0; i < itemsToSend.length; i++) {
-      const item = itemsToSend[i];
-
-      try {
-        if (item.mediaPaths.length > 0 && fs.existsSync(item.mediaPaths[0])) {
-          await this.sock.sendMessage(item.targetJid, {
-            image: { url: item.mediaPaths[0] },
-            caption: item.draft
-          });
-        } else {
-          await this.sock.sendMessage(item.targetJid, {
-            text: item.draft
-          });
-        }
-
-        sentCount++;
-        const groupIcon = item.targetGroup === 'PRODUCTION' ? '🚀' : '🛠️';
-        logger.info(`Flush: sent "${item.title}" to ${item.targetGroup} ${groupIcon}`);
-
-        // Random delay 10-15 seconds (except last item)
-        if (i < itemsToSend.length - 1) {
-          const delay = 10000 + Math.random() * 5000;
-          await sleep(delay);
-        }
-      } catch (error: any) {
-        logger.error(`Flush failed for "${item.title}":`, error);
+      if (dbQueue.length === 0) {
+        await this.sock.sendMessage(from, {
+          text: '📭 *Antrian Kosong*\n\nTidak ada broadcast untuk di-flush.'
+        });
+        return;
       }
-    }
 
-    await this.sock.sendMessage(from, {
-      text: `✅ *FLUSH COMPLETE*\n\n${sentCount}/${itemsToSend.length} broadcast terkirim!`
-    });
+      // Clear all pending items from database (returns the items)
+      const itemsToSend = getBroadcastStore().clearPendingQueue();
+
+      await this.sock.sendMessage(from, {
+        text: `🚀 *FLUSH MODE*\n\nMengirim ${itemsToSend.length} broadcast sekarang dengan interval 10-15 detik...`
+      });
+
+      let sentCount = 0;
+      for (let i = 0; i < itemsToSend.length; i++) {
+        const item = itemsToSend[i];
+
+        try {
+          // Parse media_paths from JSON if string
+          const mediaPaths: string[] = item.media_paths
+            ? (typeof item.media_paths === 'string' ? JSON.parse(item.media_paths) : item.media_paths)
+            : [];
+
+          if (mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+            await this.sock.sendMessage(this.targetGroupJid!, {
+              image: { url: mediaPaths[0] },
+              caption: item.description_id || ''
+            });
+          } else {
+            await this.sock.sendMessage(this.targetGroupJid!, {
+              text: item.description_id || '(empty)'
+            });
+          }
+
+          // Update broadcast status to sent
+          getBroadcastStore().markQueueItemSent(item.id);
+
+          sentCount++;
+          logger.info(`Flush: sent "${item.title}" 🚀`);
+
+          // Random delay 10-15 seconds (except last item)
+          if (i < itemsToSend.length - 1) {
+            const delay = 10000 + Math.random() * 5000;
+            await sleep(delay);
+          }
+        } catch (error: any) {
+          logger.error(`Flush failed for "${item.title}":`, error);
+          getBroadcastStore().markQueueItemFailed(item.id, error.message);
+        }
+      }
+
+      await this.sock.sendMessage(from, {
+        text: `✅ *FLUSH COMPLETE*\n\n${sentCount}/${itemsToSend.length} broadcast terkirim!`
+      });
+    } catch (error: any) {
+      logger.error('Error flushing queue:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+    }
   }
 
   /**
@@ -558,6 +633,84 @@ ${ownerList}`
     await this.sock.sendMessage(from, {
       text: `ℹ️ Tidak ada mode aktif.\n\nGunakan /supplier saat bulk mode atau setelah forward broadcast.`
     });
+  }
+
+  /**
+   * Show recent broadcast history
+   * Usage: /history [N] - N defaults to 5
+   */
+  private async sendBroadcastHistory(from: string, args: string) {
+    const limit = parseInt(args.trim()) || 5;
+    const clampedLimit = Math.min(Math.max(limit, 1), 20); // 1-20
+
+    try {
+      const broadcasts = getBroadcastStore().getRecentBroadcasts(clampedLimit);
+
+      if (broadcasts.length === 0) {
+        await this.sock.sendMessage(from, {
+          text: '📭 *History Kosong*\n\nBelum ada broadcast yang tersimpan.'
+        });
+        return;
+      }
+
+      let msg = `📜 *Broadcast History* (${broadcasts.length} terakhir)\n\n`;
+
+      for (const b of broadcasts) {
+        const statusIcon = b.status === 'sent' ? '✅' : b.status === 'scheduled' ? '⏰' : '📝';
+        const date = b.sent_at
+          ? new Date(b.sent_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+          : new Date(b.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+
+        msg += `${statusIcon} *${b.title}*\n`;
+        msg += `   ${b.format || '-'} | ${date}\n\n`;
+      }
+
+      msg += `💡 Gunakan \`/search <keyword>\` untuk mencari.`;
+
+      await this.sock.sendMessage(from, { text: msg });
+    } catch (error: any) {
+      logger.error('Error getting broadcast history:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+    }
+  }
+
+  /**
+   * Search broadcast history using FTS5
+   * Usage: /search <query>
+   */
+  private async searchBroadcastHistory(from: string, query: string) {
+    if (!query.trim()) {
+      await this.sock.sendMessage(from, {
+        text: '🔍 *Cara pakai:* `/search <keyword>`\n\nContoh: `/search usborne` atau `/search children`'
+      });
+      return;
+    }
+
+    try {
+      const results = getBroadcastStore().searchBroadcasts(query.trim());
+
+      if (results.length === 0) {
+        await this.sock.sendMessage(from, {
+          text: `🔍 *Tidak ditemukan*\n\nTidak ada broadcast dengan keyword "${query}"`
+        });
+        return;
+      }
+
+      let msg = `🔍 *Hasil Pencarian:* "${query}" (${results.length} hasil)\n\n`;
+
+      for (const b of results) {
+        const statusIcon = b.status === 'sent' ? '✅' : '📝';
+        const date = new Date(b.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+
+        msg += `${statusIcon} *${b.title}*\n`;
+        msg += `   ${b.format || '-'} | ${date} | ID: ${b.id}\n\n`;
+      }
+
+      await this.sock.sendMessage(from, { text: msg });
+    } catch (error: any) {
+      logger.error('Error searching broadcasts:', error);
+      await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+    }
   }
 
   private async setMarkup(from: string, args: string) {
@@ -1064,6 +1217,31 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
 
       logger.info(`Broadcast sent to group: ${sendToJid}`);
 
+      // Save to database for history tracking
+      try {
+        const parsedData = this.pendingState.parsedData || {};
+        getBroadcastStore().saveBroadcast({
+          title: parsedData.title || 'Untitled',
+          title_en: parsedData.title_en,
+          price_main: parsedData.price,
+          format: parsedData.format,
+          eta: parsedData.eta,
+          close_date: parsedData.close_date,
+          type: parsedData.type,
+          min_order: parsedData.min_order,
+          description_en: parsedData.description,
+          description_id: draft,
+          tags: parsedData.tags,
+          preview_links: parsedData.links,
+          media_paths: mediaPaths,
+          separator_emoji: parsedData.separator || '🌳',
+          status: 'sent',
+        });
+        logger.info('Broadcast saved to history');
+      } catch (dbError) {
+        logger.warn('Failed to save broadcast to history (non-fatal):', dbError);
+      }
+
       // Confirm to owner with group type
       const groupType = isDevGroup ? '🛠️ DEV' : '🚀 PRODUCTION';
       await this.sock.sendMessage(from, {
@@ -1081,12 +1259,65 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
   }
 
   private async scheduleBroadcast(from: string, intervalMinutes?: number, targetJid?: string) {
-    // For now, just save to queue - full implementation would use database
+    if (!this.pendingState || !this.pendingState.draft) {
+      await this.sock.sendMessage(from, {
+        text: '❌ Tidak ada draft yang pending untuk dijadwalkan.'
+      });
+      return;
+    }
+
     const interval = intervalMinutes || 47;
-    await this.sock.sendMessage(from, {
-      text: `📅 Fitur schedule masih dalam pengembangan. Interval: ${interval} menit. Untuk sementara, silakan kirim manual dengan reply YES.`
-    });
-    // Don't clear pending state so user can still reply YES
+    const scheduledTime = new Date(Date.now() + interval * 60 * 1000);
+
+    try {
+      const { draft, mediaPaths, parsedData } = this.pendingState;
+      const data = parsedData || {};
+
+      // Save broadcast to database first
+      const broadcastId = getBroadcastStore().saveBroadcast({
+        title: data.title || 'Untitled',
+        title_en: data.title_en,
+        price_main: data.price,
+        format: data.format,
+        eta: data.eta,
+        close_date: data.close_date,
+        type: data.type,
+        min_order: data.min_order,
+        description_en: data.description,
+        description_id: draft,
+        tags: data.tags,
+        preview_links: data.links,
+        media_paths: mediaPaths,
+        separator_emoji: data.separator || '🌳',
+        status: 'scheduled',
+      });
+
+      // Add to queue
+      const queueId = getBroadcastStore().addToQueue(broadcastId, scheduledTime);
+
+      const timeStr = scheduledTime.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Jakarta'
+      });
+
+      const isDevGroup = targetJid === this.devGroupJid;
+      const groupIcon = isDevGroup ? '🛠️ DEV' : '🚀';
+
+      await this.sock.sendMessage(from, {
+        text: `⏰ *Broadcast Dijadwalkan!*\n\n📅 Waktu: ${timeStr} WIB\n⏳ Dalam: ${interval} menit\n${groupIcon} Target: ${isDevGroup ? 'DEV' : 'PRODUCTION'}\n\n💾 ID: #${broadcastId}\n\nGunakan \`/queue\` untuk lihat antrian.\n\n⚠️ Broadcast sekarang tersimpan di database dan survive restart!`
+      });
+
+      logger.info({ broadcastId, queueId, scheduledTime }, 'Broadcast scheduled');
+
+    } catch (error: any) {
+      logger.error('Failed to schedule broadcast:', error);
+      await this.sock.sendMessage(from, {
+        text: `❌ Gagal menjadwalkan: ${error.message}`
+      });
+    } finally {
+      this.clearPendingState(from);
+    }
   }
 
   /**

@@ -3,6 +3,7 @@ import pino from 'pino';
 import { WhatsAppClient } from './whatsapp';
 import { AIClient } from './aiClient';
 import { initStateStore } from './stateStore';
+import { initBroadcastStore } from './broadcastStore';
 import path from 'path';
 
 config();
@@ -30,6 +31,10 @@ async function main() {
   const dbPath = process.env.DATABASE_PATH || path.resolve('./data/bookstore.db');
   initStateStore(dbPath);
   logger.info('✓ StateStore initialized');
+
+  // Initialize BroadcastStore for broadcast history and queue persistence
+  initBroadcastStore(dbPath);
+  logger.info('✓ BroadcastStore initialized');
 
   // Initialize WhatsApp client
   const sessionsPath = path.resolve('./sessions');

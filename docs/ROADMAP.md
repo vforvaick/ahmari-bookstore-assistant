@@ -11,6 +11,13 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
   - Phase 1-4 complete: Core, AI Background, API, WA Bot
   - **Ref**: Session 23e1df10-1953-48ff-8c81-ff6ae009deb2
 
+- [x] **Broadcast History & Persistent Queue** ✅ 2025-12-26
+  - New `broadcastStore.ts` module for SQLite-based broadcast persistence
+  - `/history [N]` and `/search <keyword>` commands
+  - Scheduled broadcasts now survive restarts
+  - Queue processor auto-sends scheduled broadcasts
+  - **Ref**: Session bd402439-4412-4f67-b9d6-08d4ebf5101d
+
 - [x] **Conversation State Persistence** ✅ 2025-12-24
   - States persist to SQLite; survives restarts
   - Multi-user support, 10-min TTL, auto-cleanup

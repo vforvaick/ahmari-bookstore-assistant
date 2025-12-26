@@ -109,16 +109,13 @@ class WhatsAppClient {
             this.sock = null;
         }
     }
-    setupMessageHandler(ownerJid, aiClient, mediaPath = './media') {
+    setupMessageHandler(ownerJids, aiClient, mediaPath = './media') {
         if (!this.sock) {
             throw new Error('Socket not connected');
         }
-        // Determine all valid owner JIDs (Phone + optional LID)
-        const ownerJids = [ownerJid];
-        if (process.env.OWNER_LID) {
-            ownerJids.push(process.env.OWNER_LID);
-        }
-        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, ownerJids, aiClient, mediaPath);
+        // Accept both single string or array of owner JIDs
+        const owners = Array.isArray(ownerJids) ? ownerJids : [ownerJids];
+        this.messageHandler = new messageHandler_1.MessageHandler(this.sock, owners, aiClient, mediaPath);
         // Listen for messages
         this.sock.ev.on('messages.upsert', async ({ messages }) => {
             for (const message of messages) {
