@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
 from typing import Optional, List
@@ -36,6 +37,18 @@ class Settings(BaseSettings):
 settings = Settings()
 app = FastAPI(title="AI Processor", version="2.2.0")
 
+# Validation error handler - log details for debugging
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error(f"Validation error on {request.url.path}")
+    logger.error(f"Request body: {body.decode('utf-8', errors='replace')[:2000]}")
+    logger.error(f"Validation errors: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()}
+    )
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +57,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Initialize services
 fgb_parser = FGBParser()
