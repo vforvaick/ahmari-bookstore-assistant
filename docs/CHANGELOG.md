@@ -293,6 +293,9 @@ All notable changes to this project will be documented in this file.
 - **AI Prompts**: Completely rewritten `gemini_client` prompts to be distinct and selling-focused.
 - **Timeout**: Increased AI processing timeout from 30s to **60s** to accommodate slow VPS responses.
 - **Generative Config**: Increased `max_output_tokens` to 2048 to prevent truncation of long reviews.
+- **API Optimization**: Deferred `/parse` call to *after* level selection.
+  - Initial level selection menu shows generic title to save 1 API call per message.
+  - Saves 50% of Gemini API usage for broadcast generation.
 
 ### Fixed
 - **Truncated AI Reviews**: Added explicit instruction and increased token limit to ensure complete paragraphs.
