@@ -887,7 +887,8 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
                     await this.searchCoverForForward(from);
                     return true;
                 case 'links':
-                    await this.sock.sendMessage(from, { text: '🔍 LINKS belum tersedia untuk forward mode.' });
+                    // Search for preview links based on parsed title
+                    await this.searchLinksForForward(from);
                     return true;
                 case 'edit':
                     // Send clean draft for copy-paste
@@ -1079,6 +1080,7 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
             // Update pending state to draft_pending
             this.pendingState.state = 'draft_pending';
             this.pendingState.draft = generated.draft;
+            this.saveState(from, 'pending', this.pendingState);
             // BUBBLE 1: Send draft with media (no menu here)
             const { mediaPaths } = this.pendingState;
             if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
@@ -1271,6 +1273,52 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
         catch (error) {
             logger.error('Cover search error:', error);
             await this.sock.sendMessage(from, { text: `❌ Gagal cari cover: ${error.message}` });
+        }
+    }
+    /**
+     * Search for preview links for forward mode (Littlerazy broadcasts without links)
+     */
+    async searchLinksForForward(from) {
+        if (!this.pendingState || !this.pendingState.parsedData) {
+            await this.sock.sendMessage(from, { text: '❌ Tidak ada data buku untuk dicari link-nya.' });
+            return;
+        }
+        try {
+            const title = this.pendingState.parsedData.title || 'buku';
+            await this.sock.sendMessage(from, { text: `🔍 Mencari preview links untuk "${title}"...` });
+            const links = await this.aiClient.searchPreviewLinks(title, 3);
+            if (links.length === 0) {
+                await this.sock.sendMessage(from, { text: '❌ Preview links tidak ditemukan.' });
+                return;
+            }
+            // Add links to parsedData
+            this.pendingState.parsedData.preview_links = links;
+            // Update draft with links section
+            let newDraft = this.pendingState.draft || '';
+            // Remove old Preview section if exists
+            const previewIdx = newDraft.indexOf('Preview:');
+            if (previewIdx > 0) {
+                newDraft = newDraft.substring(0, previewIdx).trimEnd();
+            }
+            // Add new Preview section
+            newDraft += '\n\nPreview:\n';
+            for (const link of links) {
+                newDraft += `- ${link}\n`;
+            }
+            this.pendingState.draft = newDraft.trim();
+            this.saveState(from, 'pending', this.pendingState);
+            // Show updated draft
+            await this.sock.sendMessage(from, {
+                text: `✅ ${links.length} link ditambahkan!\n\n📝 DRAFT (updated):\n\n${this.pendingState.draft}`
+            });
+            // Show menu again
+            await this.sock.sendMessage(from, {
+                text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: false, showRegen: true, showSchedule: true, showBack: true }),
+            });
+        }
+        catch (error) {
+            logger.error('Link search error:', error);
+            await this.sock.sendMessage(from, { text: `❌ Gagal cari preview links: ${error.message}` });
         }
     }
     clearPendingState(userJid) {

@@ -1101,7 +1101,8 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
           return true;
 
         case 'links':
-          await this.sock.sendMessage(from, { text: '🔍 LINKS belum tersedia untuk forward mode.' });
+          // Search for preview links based on parsed title
+          await this.searchLinksForForward(from);
           return true;
 
         case 'edit':
@@ -1318,6 +1319,7 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
       // Update pending state to draft_pending
       this.pendingState.state = 'draft_pending';
       this.pendingState.draft = generated.draft;
+      this.saveState(from, 'pending', this.pendingState);
 
       // BUBBLE 1: Send draft with media (no menu here)
       const { mediaPaths } = this.pendingState;
@@ -1533,7 +1535,64 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
     }
   }
 
+  /**
+   * Search for preview links for forward mode (Littlerazy broadcasts without links)
+   */
+  private async searchLinksForForward(from: string) {
+    if (!this.pendingState || !this.pendingState.parsedData) {
+      await this.sock.sendMessage(from, { text: '❌ Tidak ada data buku untuk dicari link-nya.' });
+      return;
+    }
+
+    try {
+      const title = this.pendingState.parsedData.title || 'buku';
+      await this.sock.sendMessage(from, { text: `🔍 Mencari preview links untuk "${title}"...` });
+
+      const links = await this.aiClient.searchPreviewLinks(title, 3);
+
+      if (links.length === 0) {
+        await this.sock.sendMessage(from, { text: '❌ Preview links tidak ditemukan.' });
+        return;
+      }
+
+      // Add links to parsedData
+      this.pendingState.parsedData.preview_links = links;
+
+      // Update draft with links section
+      let newDraft = this.pendingState.draft || '';
+
+      // Remove old Preview section if exists
+      const previewIdx = newDraft.indexOf('Preview:');
+      if (previewIdx > 0) {
+        newDraft = newDraft.substring(0, previewIdx).trimEnd();
+      }
+
+      // Add new Preview section
+      newDraft += '\n\nPreview:\n';
+      for (const link of links) {
+        newDraft += `- ${link}\n`;
+      }
+
+      this.pendingState.draft = newDraft.trim();
+      this.saveState(from, 'pending', this.pendingState);
+
+      // Show updated draft
+      await this.sock.sendMessage(from, {
+        text: `✅ ${links.length} link ditambahkan!\n\n📝 DRAFT (updated):\n\n${this.pendingState.draft}`
+      });
+
+      // Show menu again
+      await this.sock.sendMessage(from, {
+        text: getDraftMenu({ showCover: true, showLinks: false, showRegen: true, showSchedule: true, showBack: true }),
+      });
+    } catch (error: any) {
+      logger.error('Link search error:', error);
+      await this.sock.sendMessage(from, { text: `❌ Gagal cari preview links: ${error.message}` });
+    }
+  }
+
   private clearPendingState(userJid: string) {
+
     if (this.pendingState) {
       // Cleanup any remaining media files
       for (const filepath of this.pendingState.mediaPaths) {
