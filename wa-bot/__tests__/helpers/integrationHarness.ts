@@ -280,6 +280,37 @@ export class IntegrationHarness {
         return this.socket._capturedMessages.map(m => m.content.text || m.content.caption || '');
     }
 
+    // Get all responses combined as single string
+    getCombinedResponse(): string {
+        return this.getAllResponses().join(' ');
+    }
+
+    // Assert that ANY response contains text (checks all bubbles)
+    assertAnyResponseContains(expected: string, description?: string): void {
+        const allResponses = this.getCombinedResponse();
+        const passed = allResponses.toLowerCase().includes(expected.toLowerCase());
+        this.logger.logAssertion(
+            description || `Any response contains "${expected}"`,
+            expected,
+            allResponses.substring(0, 300),
+            passed
+        );
+        expect(allResponses.toLowerCase()).toContain(expected.toLowerCase());
+    }
+
+    // Assert ANY response matches pattern (checks all bubbles)  
+    assertAnyResponseMatches(pattern: RegExp, description?: string): void {
+        const allResponses = this.getCombinedResponse();
+        const passed = pattern.test(allResponses);
+        this.logger.logAssertion(
+            description || `Any response matches ${pattern}`,
+            pattern.toString(),
+            allResponses.substring(0, 300),
+            passed
+        );
+        expect(allResponses).toMatch(pattern);
+    }
+
     // Assert that last response contains text
     assertResponseContains(expected: string, description?: string): void {
         const actual = this.getLastResponse();
@@ -317,6 +348,11 @@ export class IntegrationHarness {
             passed
         );
         expect(actual).toBe(count);
+    }
+
+    // Wait for async processing
+    async wait(ms: number = 100): Promise<void> {
+        await new Promise(resolve => setTimeout(resolve, ms));
     }
 
     // Cleanup
