@@ -1,16 +1,16 @@
 """
-GeminiClient - Multi-Model Rotation with API Key Fallback
+GeminiClient - Unified LLM Client with Provider Router
 
-Strategy: Rotate through models FIRST, then switch API key when all models exhausted.
-Models: gemini-2.5-flash → gemini-2.5-flash-lite → gemini-2.0-flash
-This maximizes quota usage across different model rate limits.
+Primary: CLIProxyAPI (OpenAI-compatible gateway at fight-cuatro)
+Fallback: Direct Gemini SDK with multi-model rotation
 
-Only generates review paragraph + optional publisher guess.
+The provider router handles automatic failover between providers.
 Formatting is handled by OutputFormatter (rule-based).
 """
 
 import json
 import os
+import re
 import threading
 import logging
 import traceback
@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Optional, List
 from pydantic import BaseModel
 from models import ParsedBroadcast
+
+# Import provider router for CLIProxyAPI → Gemini failover
+from providers.router import get_router
+from providers.base import TaskType, GenerationConfig
 
 # Configure logging with more detail
 logging.basicConfig(
@@ -254,6 +258,63 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
         
         prompt = self._build_review_prompt(parsed, level, user_edit)
         logger.debug(f"Built prompt, length: {len(prompt)} chars")
+        
+        # ===== TRY CLIPROXY FIRST (Primary Provider) =====
+        try:
+            router = get_router()
+            config = GenerationConfig(temperature=0.8, top_p=0.95, top_k=40, max_tokens=4096)
+            
+            logger.info("Attempting CLIProxyAPI (primary)...")
+            response = await router.generate_text(
+                prompt=prompt,
+                task_type=TaskType.TEXT_GENERATION,
+                config=config
+            )
+            
+            if not response.error and response.text:
+                logger.info(f"✓ CLIProxyAPI success via {response.provider}/{response.model_used}")
+                
+                # Parse response (same logic as before)
+                result_text = response.text.strip()
+                publisher_guess = None
+                cleaned_title = None
+                review = result_text
+                
+                publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
+                if publisher_match:
+                    publisher_guess = publisher_match.group(1).strip()
+                    review = result_text[publisher_match.end():].strip()
+                
+                title_match = re.match(r'^TITLE:\s*(.+?)\n', review)
+                if title_match:
+                    cleaned_title = title_match.group(1).strip()
+                    review = review[title_match.end():].strip()
+                
+                if review.startswith('{') and '"review"' in review:
+                    try:
+                        result_json = json.loads(review)
+                        review = result_json.get('review', review)
+                        if not publisher_guess:
+                            publisher_guess = result_json.get('publisher_guess')
+                    except:
+                        pass
+                
+                if review.startswith('"') and review.endswith('"'):
+                    review = review[1:-1]
+                
+                return AIReviewResponse(
+                    publisher_guess=publisher_guess,
+                    cleaned_title=cleaned_title,
+                    review=review
+                )
+            else:
+                logger.warning(f"CLIProxyAPI returned error: {response.error}, falling back to direct Gemini...")
+                
+        except Exception as e:
+            logger.warning(f"CLIProxyAPI failed: {e}, falling back to direct Gemini...")
+        
+        # ===== FALLBACK: Direct Gemini SDK (Legacy Behavior) =====
+        logger.info("Using direct Gemini SDK fallback...")
         
         generation_config = {
             "temperature": 0.8,

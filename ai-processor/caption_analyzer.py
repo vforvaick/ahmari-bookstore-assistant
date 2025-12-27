@@ -5,7 +5,8 @@ Analyzes images to detect:
 1. Series posters (multiple book covers) → Series promo
 2. Single book covers → Single book promo
 
-Uses Gemini Vision API for image understanding.
+Primary: CLIProxyAPI via Provider Router (gemini-3-pro-image-preview)
+Fallback: Direct Gemini Vision API
 """
 
 import json
@@ -19,6 +20,10 @@ from dataclasses import dataclass
 from PIL import Image
 
 import google.generativeai as genai
+
+# Import provider router for CLIProxyAPI → Gemini failover
+from providers.router import get_router
+from providers.base import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +147,47 @@ Respond ONLY with valid JSON, no other text."""
             buffer = io.BytesIO()
             img.save(buffer, format='PNG')
             image_data = buffer.getvalue()
+            
+            # ===== TRY CLIPROXY FIRST (Primary Provider) =====
+            try:
+                router = get_router()
+                logger.info("Attempting CLIProxyAPI vision (primary)...")
+                
+                response = await router.analyze_image(
+                    image_data=image_data,
+                    prompt=prompt
+                )
+                
+                if not response.error and response.text:
+                    logger.info(f"✓ CLIProxyAPI vision success via {response.provider}/{response.model_used}")
+                    response_text = response.text.strip()
+                    
+                    # Clean up markdown code blocks
+                    if response_text.startswith('```'):
+                        lines = response_text.split('\n')
+                        response_text = '\n'.join(lines[1:-1])
+                    
+                    data = json.loads(response_text)
+                    
+                    logger.info(f"Analysis complete: is_series={data.get('is_series')}, "
+                               f"titles={len(data.get('book_titles', []))}")
+                    
+                    return CaptionAnalysis(
+                        is_series=data.get('is_series', False),
+                        series_name=data.get('series_name'),
+                        publisher=data.get('publisher'),
+                        book_titles=data.get('book_titles', []),
+                        description=data.get('description', ''),
+                        title=data.get('title'),
+                        author=data.get('author'),
+                    )
+                else:
+                    logger.warning(f"CLIProxyAPI vision error: {response.error}, falling back...")
+            except Exception as e:
+                logger.warning(f"CLIProxyAPI vision failed: {e}, falling back to direct Gemini...")
+            
+            # ===== FALLBACK: Direct Gemini SDK =====
+            logger.info("Using direct Gemini Vision fallback...")
             
             # Try with key rotation on rate limit
             max_retries = len(self.api_keys)
