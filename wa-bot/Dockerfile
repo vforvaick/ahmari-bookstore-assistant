@@ -20,6 +20,10 @@ RUN npm install
 COPY tsconfig.json ./
 COPY src ./src
 
+# Copy test files (for running tests in container)
+COPY jest.config.js ./
+COPY __tests__ ./__tests__
+
 # Build TypeScript
 RUN npm run build
 
