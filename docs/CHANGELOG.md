@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 ### Added
+- **CLIProxyAPI Integration (2025-12-27)**:
+  - Primary LLM provider now routes through CLIProxyAPI gateway (fight-cuatro:8317)
+  - Automatic failover from CLIProxyAPI → Direct Gemini SDK
+  - New `providers/` package: `cliproxy_provider.py`, `gemini_backup.py`, `router.py`
+  - Task-based model selection for optimal usage:
+    - Text generation: `gemini-2.5-flash`
+    - Vision: `gemini-3-pro-image-preview`
+    - Research: `kiro-claude-sonnet-4-5`
+    - Simple tasks: `gemini-2.5-flash-lite`
+  - Added `openai>=1.0.0` dependency for OpenAI SDK compatibility
+  - Environment: `CLIPROXY_BASE_URL`, `CLIPROXY_API_KEY`
+
 - **Integration Testing Framework** (2025-12-27):
   - `jest.config.js` with TypeScript support and 120s timeout for real API calls
   - Test fixtures: `fgb-broadcasts.json` (7 samples), `littlerazy-broadcasts.json` (3 samples)
