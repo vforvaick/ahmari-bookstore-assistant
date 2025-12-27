@@ -1,0 +1,60 @@
+{
+    "littlerazy": {
+        "brave_molly_hc": {
+            "id": "lr_hc_001",
+            "text": "Brave Molly HC 140.000 ETA MEI 🌸🌸🌸 What do you do when no one can see your monsters but you? At first, Molly runs from them. But they follow her down the sidewalk, getting in the way when she tries to make a new friend, popping up unexpectedly out of shadows, and multiplying. Until finally...Molly faces her fears. Author-illustrator Brooke Boynton-Hughes delivers a modern classic in this moving adventure that honors everyday acts of bravery and the power of friendship to banish the monsters that haunt us.",
+            "expected": {
+                "title": "Brave Molly",
+                "format": "HC",
+                "price_main": 140000,
+                "eta": "Mei '25",
+                "separator_emoji": "🌸🌸🌸",
+                "has_description": true
+            }
+        },
+        "forest_finn_skips_hc": {
+            "id": "lr_hc_002",
+            "text": "FOREST (finn and skips) HC 140.000 ETA MEI 🌸🌸🌸 Finn and Skip are on an adventure vacation, cycling through the towering rainforests of central America, when they notice that large patches of trees seem to have disappeared. The plot thickens when an unexpected guest arrives at their campsite—a lonely baby tapir. They feed their new friend, but the next morning they wake up to even more hungry animals. It seems something is afoot in the forest, and Finn and Skip set out to discover what's going on...\n\nThis book is the ideal introduction to the environmental concerns facing our forests, featuring colorful illustrations and an engaging, light-hearted storyline, drawn and written by Brendan Kearney. Grown-ups and children will enjoy reading together and following the story of Finn and Skip, with its ups and downs, and pointing out all the different animals that Finn meets in the rainforest. They'll also learn about how using ethical products can help save the animals.",
+            "expected": {
+                "title": "FOREST (finn and skips)",
+                "format": "HC",
+                "price_main": 140000,
+                "eta": "Mei '25",
+                "separator_emoji": "🌸🌸🌸",
+                "has_description": true,
+                "description_multiline": true
+            }
+        },
+        "plastic_sucks_hc": {
+            "id": "lr_hc_003",
+            "text": "Plastic Sucks HC 130.000 ETA MEI 🌸🌸🌸 How can YOU help save our planet? This awesome and inspiring guide, written by musician and environmental activist Dougie Poynter, will tell you how to get involved in the mission to cut out single-use plastic.\n\nPlastic is everywhere and it sucks. It fills up our oceans, endangers our wildlife and never goes away. So it's time to take action, find ways to cut down our plastic use, and help protect our environment. Together we can make a difference!\n\nFrom the history of plastic to the effects of plastic on our planet to the innovations in plastic clean up and alternative materials, this book breaks down the plastic problem into easy digestible chapters (including \"What's Going On\", \"Innovations in Cleanup,\" and \"How to Create Change\") that are packed with illustrations. And this isn't just a history of what's gone wrong with our environment; it's a handbook on how to change the world for better, empowering you to make everyday choices that help solve the plastic problem",
+            "expected": {
+                "title": "Plastic Sucks",
+                "format": "HC",
+                "price_main": 130000,
+                "eta": "Mei '25",
+                "separator_emoji": "🌸🌸🌸",
+                "has_description": true,
+                "description_multiline": true
+            }
+        }
+    },
+    "metadata": {
+        "source": "User-provided samples",
+        "date_collected": "2025-12-27",
+        "supplier_patterns": {
+            "format": "TITLE FORMAT PRICE ETA MONTH EMOJI DESCRIPTION",
+            "title_position": "start of line",
+            "format_options": [
+                "HC",
+                "HB",
+                "PB",
+                "BB"
+            ],
+            "price_format": "XXX.XXX (no currency symbol)",
+            "eta_format": "ETA MONTH",
+            "separator": "🌸🌸🌸 (flower emojis)",
+            "description": "follows emoji separator"
+        }
+    }
+}

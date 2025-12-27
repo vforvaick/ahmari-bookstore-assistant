@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 ### Added
+- **Integration Testing Framework** (2025-12-27):
+  - `jest.config.js` with TypeScript support and 120s timeout for real API calls
+  - Test fixtures: `fgb-broadcasts.json` (7 samples), `littlerazy-broadcasts.json` (3 samples)
+  - `integrationHarness.ts` with mock socket and real AI client wrapper
+  - `testLogger.ts` for structured JSON logs (input/output/AI calls/state changes)
+  - `coverage-matrix.md` for tracking progress toward 100% coverage
+  - Test suites: detector (22 tests), fgb-flow, littlerazy-flow, bulk-mode, caption-flow, commands
+  - **Run:** `cd wa-bot && npm test`
+
 - **Multi-Owner Config**: Support for comma-separated `OWNER_JID` and `OWNER_LID` lists in `.env`.
 - **Back Navigation (Cancel/Undo)**: Users can now undo accidental selections during all conversation flows.
   - New commands: `0`, `BACK`, `kembali`, `balik` → go back one step

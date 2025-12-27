@@ -1,0 +1,102 @@
+{
+    "fgb": {
+        "woeb_hardback_standard": {
+            "id": "fgb_hb_001",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*We Are All Animals* (HB)\n🏷️ Rp 220.000\n\n🦊🦊🦊\nWe Are All Animals offers children an awe-inspiring new way to understand the animal kingdom.\n\nThis unique book reveals astonishing similarities in the anatomy – and many more characteristics – of humans and other animals, celebrating our entire furry, scaly, slimy, slippery, extended family.\n\n_Preview :_\n* https://www.instagram.com/p/DH-Ztp0KlDP/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "We Are All Animals",
+                "format": "HB",
+                "price_main": 220000,
+                "has_preview": true
+            }
+        },
+        "woeb_hardback_multi_preview": {
+            "id": "fgb_hb_002",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*Where In The World Are You?* (HB)\n🏷️ Rp 180.000\n\n🦊🦊🦊\nWhere are you in the world? Can you imagine what your home would look like if you saw it from above and zoomed out further, and further, and further…? Join the mischievous pet cat on a journey of discovery that encourages young readers to think about their place in the world. Inspired by the feeling of being trapped inside and imagining the world beyond during the worldwide lockdowns, this enjoyable picture book reminds us that even when we are apart, we are all connected.\n\n_Preview :_\n* https://www.instagram.com/p/Ckbj0m0qyh0/?igshid=MDJmNzVkMjY=\n* https://amzn.eu/d/e20gDcu",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "Where In The World Are You?",
+                "format": "HB",
+                "price_main": 180000,
+                "preview_count": 2
+            }
+        },
+        "woeb_hardback_bedtime": {
+            "id": "fgb_hb_003",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*5-Minute Really True Stories For Bedtime* (HB)\n🏷️ Rp 195.000\n\n🦊🦊🦊\nWhy do we sleep? How do sharks snooze underwater? Where is the oldest bed in the world?\n\nIn this compendium of 5-minute really true stories about bedtime, you can go on a journey of wonder and learning to find out the answers to all these questions, and many more!\n\n_Preview :_\n* https://www.instagram.com/p/CiGBg9sq_Vh/?igshid=MDJmNzVkMjY=\n* https://youtu.be/iMRaEl2FY1M?si=-1cJ7mkxMXyQf6D2",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "5-Minute Really True Stories For Bedtime",
+                "format": "HB",
+                "price_main": 195000
+            }
+        },
+        "woeb_hardback_family": {
+            "id": "fgb_hb_004",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*5-Minute Really True Stories for Family Time* (HB)\n🏷️ Rp 195.000\n\n🦊🦊🦊\nWhat did the world's first playgrounds look like? What do families all over the world eat for breakfast? How did dinosaurs look after their babies? In this compendium of 5-minute really true stories you will meet all types of families - human and animal - and learn about the many ways they spend time together. From family bicycle rides to animal migrations, and from tidy up time to cosying up with pets, discover the amazing science and history of family activities. \n\n_Preview :_\n* https://amzn.eu/d/79rtey9",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "5-Minute Really True Stories for Family Time",
+                "format": "HB",
+                "price_main": 195000
+            }
+        },
+        "woeb_boardbook_building": {
+            "id": "fgb_bb_001",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*Zoom: Building Site Adventure* (BB)\n🏷️ Rp 165.000\n\n🦊🦊🦊\nZoom series contains of 36-page board books, with peek-a-boo holes through the pages and a surprise popup according to its theme\n\n_Preview :_\n* https://www.instagram.com/p/CY1AMeOq1vD/?igshid=MzRlODBiNWFlZA==",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "Zoom: Building Site Adventure",
+                "format": "BB",
+                "price_main": 165000
+            }
+        },
+        "woeb_boardbook_dinosaur": {
+            "id": "fgb_bb_002",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*Zoom: Dinosaur Adventure* (BB)\n🏷️ Rp 165.000\n\n🦊🦊🦊\nEncounter a long-necked Alamosaurus with a big appetite, take a trip on a flying pterosaur and come face to face with the fearsome T. rex. Die-cut board pages and a pop-up make every page an interactive experience, while fun and informative writing explains fascinating facts about dinosaurs.\n\n_Preview :_\n* https://www.instagram.com/p/CV-B3dgK6HF/?utm_source=ig_web_copy_link",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "Zoom: Dinosaur Adventure",
+                "format": "BB",
+                "price_main": 165000
+            }
+        },
+        "woeb_boardbook_farm": {
+            "id": "fgb_bb_003",
+            "text": "WoEB | ETA : Apr '26\n_(close : 20 Dec)_\n\n*Zoom: Farm Adventure* (BB)\n🏷️ Rp 165.000\n\n🦊🦊🦊\nJoin Bo on as he gets to work on his very own farm, including raising alpacas, milking cows and bringing in the peanut harvest.\n\n_Preview :_\n* https://www.instagram.com/p/CYV0qNhKyVG/?igshid=MDJmNzVkMjY=",
+            "expected": {
+                "type": "WoEB",
+                "eta": "Apr '26",
+                "close_date": "20 Dec",
+                "title": "Zoom: Farm Adventure",
+                "format": "BB",
+                "price_main": 165000
+            }
+        }
+    },
+    "metadata": {
+        "source": "User-provided samples",
+        "date_collected": "2025-12-27",
+        "supplier_patterns": {
+            "type_indicator": "WoEB | ETA",
+            "close_date_format": "_(close : DD Mon)_",
+            "title_format": "*Title* (FORMAT)",
+            "price_format": "🏷️ Rp XXX.XXX",
+            "separator": "🦊🦊🦊",
+            "preview_format": "_Preview :_\\n* URL"
+        }
+    }
+}
