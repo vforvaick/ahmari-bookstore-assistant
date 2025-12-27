@@ -714,6 +714,7 @@ Gunakan /groups untuk lihat JID yang valid.`
     async handlePendingResponse(from, text) {
         if (!this.pendingState)
             return false;
+        logger.debug({ pendingState: this.pendingState.state, text }, 'handlePendingResponse called');
         // Check if state is expired (5 minutes)
         if (Date.now() - this.pendingState.timestamp > 5 * 60 * 1000) {
             logger.info('Pending state expired');
@@ -1080,7 +1081,9 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
             // Update pending state to draft_pending
             this.pendingState.state = 'draft_pending';
             this.pendingState.draft = generated.draft;
+            this.pendingState.timestamp = Date.now(); // Refresh timestamp to prevent expiry
             this.saveState(from, 'pending', this.pendingState);
+            logger.info({ state: 'draft_pending' }, 'State transitioned to draft_pending');
             // BUBBLE 1: Send draft with media (no menu here)
             const { mediaPaths } = this.pendingState;
             if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
