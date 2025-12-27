@@ -59,7 +59,7 @@ class CLIProxyProvider(LLMProvider):
         )
         self.api_key = api_key or os.getenv(
             "CLIPROXY_API_KEY",
-            "cliproxy-secret-2024"
+            ""  # No default - must be set in environment
         )
         
         # Model mapping

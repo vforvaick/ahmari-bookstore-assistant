@@ -141,6 +141,34 @@ class MessageHandler {
         }, POLL_INTERVAL_MS);
         logger.info('Queue processor started (polling every 1 min)');
     }
+    // ==================== ERROR HANDLING HELPER ====================
+    /**
+     * standardized error handling for AI operations
+     * Sends friendly messages for quota/timeout issues
+     */
+    async handleAIError(from, error) {
+        logger.error('AI Error:', error);
+        const errorMsg = (error.message || '').toLowerCase();
+        if (errorMsg.includes('429') ||
+            errorMsg.includes('quota') ||
+            errorMsg.includes('exhausted') ||
+            errorMsg.includes('all_providers_unavailable') ||
+            errorMsg.includes('all providers unavailable')) {
+            await this.sock.sendMessage(from, {
+                text: '⚠️ *Kuota AI Habis*\n\nMaaf, semua API key (CLIProxy + Backup) sedang limit. Mohon tunggu 1-2 menit lalu coba lagi.\n\n_Sistem otomatis merotasi provider, tapi trafik sedang sangat tinggi._'
+            });
+        }
+        else if (errorMsg.includes('timeout') || errorMsg.includes('socket hang up')) {
+            await this.sock.sendMessage(from, {
+                text: '⚠️ *Koneksi Timeout*\n\nRespon AI terlalu lama. Coba lagi nanti atau gunakan level "Standard".\n\n_Tips: Coba kirim ulang broadcast._'
+            });
+        }
+        else {
+            await this.sock.sendMessage(from, {
+                text: `❌ Error: ${error.message}\n\nSilakan coba lagi.`
+            });
+        }
+    }
     // ==================== STATE PERSISTENCE HELPERS ====================
     /**
      * Load all states for a user from persistent storage
@@ -596,8 +624,7 @@ ${ownerList}`
             await this.sock.sendMessage(from, { text: msg });
         }
         catch (error) {
-            logger.error('Error searching broadcasts:', error);
-            await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+            await this.handleAIError(from, error);
         }
     }
     async setMarkup(from, args) {
@@ -1032,8 +1059,7 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
             await this.generateDraftFromParsedData(from);
         }
         catch (error) {
-            logger.error('Error generating draft:', error);
-            await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+            await this.handleAIError(from, error);
             this.clearPendingState(from);
         }
     }
@@ -1103,8 +1129,7 @@ Atau kirim */skip* untuk lanjut tanpa melengkapi.`
             });
         }
         catch (error) {
-            logger.error('Error generating draft:', error);
-            await this.sock.sendMessage(from, { text: `❌ Error: ${error.message}` });
+            await this.handleAIError(from, error);
             this.clearPendingState(from);
         }
     }
@@ -1441,10 +1466,7 @@ Balas dengan angka *1* atau *2*`;
             }
         }
         catch (error) {
-            logger.error('Error processing FGB broadcast:', error);
-            await this.sock.sendMessage(from, {
-                text: `❌ Error: ${error.message}\n\nSilakan coba lagi.`,
-            });
+            await this.handleAIError(from, error);
             // Cleanup on error
             for (const filepath of mediaPaths) {
                 try {

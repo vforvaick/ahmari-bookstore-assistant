@@ -16,6 +16,18 @@ All notable changes to this project will be documented in this file.
   - Added `openai>=1.0.0` dependency for OpenAI SDK compatibility
   - Environment: `CLIPROXY_BASE_URL`, `CLIPROXY_API_KEY`
 
+- **User-Friendly Quota Handler (2025-12-27)**:
+  - New `handleAIError()` method in messageHandler for standardized error handling
+  - Detects 429/quota/exhausted errors → Shows friendly "Kuota AI Habis" message
+  - Detects timeout/socket hang up → Shows "Koneksi Timeout" with tips
+  - Used in 5 catch blocks across all AI operations
+
+### Security
+- **API Key Leak Remediation (2025-12-27)**:
+  - Removed hardcoded API keys from `test_e2e.py` and `list_models.py`
+  - Removed default CLIProxy secret from `cliproxy_provider.py`
+  - All scripts now require environment variables
+
 - **Integration Testing Framework** (2025-12-27):
   - `jest.config.js` with TypeScript support and 120s timeout for real API calls
   - Test fixtures: `fgb-broadcasts.json` (7 samples), `littlerazy-broadcasts.json` (3 samples)

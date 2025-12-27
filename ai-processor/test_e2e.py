@@ -2,14 +2,19 @@
 """
 End-to-end test with the user's sample broadcast text.
 Tests both /parse and /generate endpoints.
+
+Requires GEMINI_API_KEYS environment variable.
 """
 
 import os
 import sys
 
-# Set API keys for testing
-os.environ['GEMINI_API_KEYS'] = "AIzaSyDPOpVXR_JflPd371w0jO01V6ujd5QhhVs,AIzaSyBMITju8UXJTtO_3vAWS2Uh-NPoPige-zw,AIzaSyA62jYse_Y9081vdbqUesxYoMD9WW7weQU"
-os.environ['GEMINI_MODEL'] = "gemini-2.5-flash"
+# Ensure API keys are set from environment (NOT hardcoded)
+if not os.environ.get('GEMINI_API_KEYS'):
+    print("❌ Error: GEMINI_API_KEYS environment variable not set")
+    print("   Set it with: export GEMINI_API_KEYS='key1,key2,key3'")
+    sys.exit(1)
+os.environ.setdefault('GEMINI_MODEL', 'gemini-2.5-flash')
 
 import asyncio
 from parser import FGBParser

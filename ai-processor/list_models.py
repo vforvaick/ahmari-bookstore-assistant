@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """
-List available Gemini models and test API keys
+List available Gemini models and test API keys.
+
+Requires GEMINI_API_KEYS environment variable.
 """
 
+import os
+import sys
 import google.generativeai as genai
 
-API_KEYS = [
-    "AIzaSyDPOpVXR_JflPd371w0jO01V6ujd5QhhVs",
-    "AIzaSyBMITju8UXJTtO_3vAWS2Uh-NPoPige-zw", 
-    "AIzaSyA62jYse_Y9081vdbqUesxYoMD9WW7weQU",
-]
+# Load API keys from environment (NOT hardcoded)
+keys_str = os.environ.get('GEMINI_API_KEYS', '')
+if not keys_str:
+    print("❌ Error: GEMINI_API_KEYS environment variable not set")
+    print("   Set it with: export GEMINI_API_KEYS='key1,key2,key3'")
+    sys.exit(1)
+
+API_KEYS = [k.strip() for k in keys_str.split(',') if k.strip()]
 
 # Use first key to list models
 genai.configure(api_key=API_KEYS[0])
