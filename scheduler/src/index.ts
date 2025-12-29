@@ -121,9 +121,21 @@ async function main() {
   const scheduler = new QueueScheduler(dbPath);
   scheduler.start();
 
+  // Keep process alive with heartbeat
+  // Queue processing is handled by wa-bot, this service just needs to stay up
+  setInterval(() => {
+    logger.debug('Scheduler heartbeat');
+  }, 5 * 60 * 1000); // Every 5 minutes
+
   // Graceful shutdown
   process.on('SIGINT', () => {
     logger.info('Shutting down scheduler...');
+    scheduler.stop();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    logger.info('Received SIGTERM, shutting down...');
     scheduler.stop();
     process.exit(0);
   });
