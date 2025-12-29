@@ -88,9 +88,9 @@ graph TD
 
 ### 3. Queue Scheduler Service (Node.js)
 - **Role**: Legacy / Backup.
-- **Status**: Functionality migrated to **WhatsApp Bot Service** (via polling).
+- **Status**: Stabilized (v2.5.1). Heartbeat added to prevent exit loop.
 - **Responsibilities**:
-  - *Deprecated*: Previously handled cron-based queue processing. Now `wa-bot` handles this directly to ensure access to WhatsApp socket.
+  - *Deprecated*: Previously handled cron-based queue processing. Now `wa-bot` handles this directly. Scheduler remains as a backup service with a 5-minute heartbeat to ensure uptime.
 
 ### 4. Telegram Bot Service ~~(Removed - deprecated v2.3.0)~~
 - Previously: Secondary broadcast channel to Telegram.
@@ -166,8 +166,21 @@ CREATE VIRTUAL TABLE broadcasts_fts USING fts5(
 );
 ```
 
-## Infrastructure
+## Infrastructure (Multi-Node Setup)
+
+As of Dec 2025, the system is distributed across two VPS nodes to optimize resource usage:
+
+### 1. **fight-cuatro** (2GB RAM) - Primary Application Node
+- **wa-bot**: Primary WhatsApp connection and logic.
+- **ai-processor**: Rule-based + AI processing logic.
+- **scheduler**: Heartbeat-stabilized backup service.
+- **Resources**: ~1GB headroom maintained.
+
+### 2. **fight-dos** (1GB RAM) - Utility Node
+- **CLIProxyAPI**: Lightweight Go proxy for LLM requests.
+- **Resources**: Optimized for low-memory high-throughput tasks.
+
 - **Containerization**: All services are Dockerized.
-- **Orchestration**: Docker Compose manages the 3 services.
-- **Volumes**: Shared volumes for SQLite data, Media files, and WhatsApp sessions.
-- **Environment**: Deployed on VPS (Oracle Cloud).
+- **Environment**: Distributed deployment across Oracle Cloud / Tencent Cloud nodes.
+- **Reliability**: Failover from CLIProxy to direct Gemini SDK enabled in `ai-processor`.
+
