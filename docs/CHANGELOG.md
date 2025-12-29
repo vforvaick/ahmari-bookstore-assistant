@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-12-29] - VPS Migration (fight-dos → fight-cuatro)
+
+### Changed
+- **Infrastructure Migration**: Moved bot from fight-dos (1GB RAM) to fight-cuatro (2GB RAM)
+  - fight-dos was at 99% memory utilization (CRITICAL alerts from Netdata)
+  - Fresh deploy via git clone + session transfer
+  - Current usage: wa-bot 53MB/350MB (15%), ai-processor 108MB/400MB (27%)
+
+### Fixed
+- **Memory Exhaustion**: Resolved chronic OOM issues on fight-dos
+  - Bot now has ~1GB headroom instead of constant swap pressure
+  - No more scheduler restart loops due to memory pressure
+
+### Discovered Issues
+- **Scheduler Exit Loop**: Pre-existing issue where scheduler container exits immediately
+  - Root cause: `main()` has no keep-alive (cron disabled, queue handled by wa-bot)
+  - Severity: Low (no impact - queue processing in wa-bot works)
+  - Tracked: ROADMAP.md#scheduler-refactor
+
+### Technical Debt Incurred
+- **CLIProxy Migration**: Deferred moving CLIProxy from fight-cuatro to fight-dos
+  - Follow-up: Will update all dependent services with new IP
+
+### Files Modified
+- fight-cuatro: `~/bot-wa-bookstore/` (new installation)
+- fight-dos: containers stopped, directory preserved as backup
+
+### Reference
+- Session: ebfd2647-2eb0-4181-8fc6-fdd4d77c59ac
+
+---
+
 ## [2025-12-29] - Test Migration & AI Fixes
 ### Fixed
 - **Python `re` Scoping Bug**: Resolved `UnboundLocalError` in `ai-processor/gemini_client.py` caused by redundant local imports shadowing the module-level `re` import.

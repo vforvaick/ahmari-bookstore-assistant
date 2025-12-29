@@ -77,8 +77,14 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 ## Technical Debt
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 - **Fix `IntegrationHarness` State Management**: Improve the test harness to preserve or properly snapshot state so Draft Commands (SEND/EDIT/REGEN) can be fully verified.
+- **Scheduler Container Refactor** (2025-12-29): The scheduler exits immediately after `start()` because the cron job is disabled and there's no keep-alive. Queue processing has moved to wa-bot's internal poller, making scheduler redundant. Options: 1) Remove scheduler service entirely, 2) Add proper keep-alive, 3) Re-enable cron for external scheduling needs.
 
 ## Recently Completed
+- [x] **VPS Migration (fight-dos → fight-cuatro)** ✅ (2025-12-29)
+  - Migrated from 1GB RAM (99% utilization) to 2GB RAM (50% utilization)
+  - Fresh deploy + session transfer strategy
+  - fight-dos now available for CLIProxy migration
+
 - [x] **Integration Testing Framework** ✅ (2025-12-27)
   - ✅ Implemented real AI integration tests (Jest + ts-jest)
   - ✅ Created structured JSON test logger
