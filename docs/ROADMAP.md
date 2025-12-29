@@ -77,7 +77,7 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 ## Technical Debt
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
 - **Fix `IntegrationHarness` State Management**: Improve the test harness to preserve or properly snapshot state so Draft Commands (SEND/EDIT/REGEN) can be fully verified.
-- **Scheduler Container Refactor** (2025-12-29): The scheduler exits immediately after `start()` because the cron job is disabled and there's no keep-alive. Queue processing has moved to wa-bot's internal poller, making scheduler redundant. Options: 1) Remove scheduler service entirely, 2) Add proper keep-alive, 3) Re-enable cron for external scheduling needs.
+- ~~**Scheduler Container Refactor**~~: ✅ Fixed (2025-12-29) - Added keep-alive heartbeat to prevent immediate exit.
 
 ## Recently Completed
 - [x] **VPS Migration (fight-dos → fight-cuatro)** ✅ (2025-12-29)

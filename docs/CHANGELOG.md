@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.
 - **Memory Exhaustion**: Resolved chronic OOM issues on fight-dos
   - Bot now has ~1GB headroom instead of constant swap pressure
   - No more scheduler restart loops due to memory pressure
+- **Scheduler Restart Loop**: Added keep-alive heartbeat to prevent immediate exit
+  - `setInterval` heartbeat every 5 minutes
+  - `SIGTERM` handler for graceful Docker shutdown
 
 ### Discovered Issues
 - **Scheduler Exit Loop**: Pre-existing issue where scheduler container exits immediately
