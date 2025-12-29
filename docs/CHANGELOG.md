@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2025-12-29] - Test Migration & AI Fixes
+### Fixed
+- **Python `re` Scoping Bug**: Resolved `UnboundLocalError` in `ai-processor/gemini_client.py` caused by redundant local imports shadowing the module-level `re` import.
+- **BACK Alias**: Added `0` as a valid alias for `BACK` navigation in `parseDraftCommand.ts` for consistency across all flows.
+- **Local Test Connection**: Fixed `wa-bot` failing to connect to local `ai-processor` using `127.0.0.1:8000`.
+
+### Changed
+- **Primary LLM Provider**: Successfully configured `CLIProxyAPI` (fight-cuatro) as the primary provider with fallback to Gemini SDK.
+- **Migration**: Moved integration test execution from VPS to local development environment to resolve resource exhaustion issues.
+- **Test Stability**: Implemented 10-15s retry loops in `IntegrationHarness` to handle asynchronous AI generation during integration tests.
+
+### Discovered Issues
+- **Harness State Persistence**: Draft Command tests (SEND/EDIT/REGEN) are currently skipped due to state loss in the mock environment after `reply()` calls.
+- **Image Tests**: Caption flow tests remain skipped pending better media fixture support.
+
+---
+
 ## [Unreleased]
 ### Added
 - **CLIProxyAPI Integration (2025-12-27)**:

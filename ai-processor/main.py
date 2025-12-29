@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings
 from typing import Optional, List
 import logging
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from parser import FGBParser
 from littlerazy_parser import LitterazyParser

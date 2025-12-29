@@ -75,8 +75,8 @@ function parseDraftCommand(text) {
         return { action: 'links' };
     }
     // BACK - go to previous step
-    // Note: '0' is handled specially in each flow's handler since it also means "cancel" in some contexts
-    if (normalized === 'back' || normalized === 'kembali' || normalized === 'balik') {
+    // '0' is a common shortcut for back/cancel in menu systems
+    if (normalized === '0' || normalized === 'back' || normalized === 'kembali' || normalized === 'balik') {
         return { action: 'back' };
     }
     // RESTART - return to beginning of current flow

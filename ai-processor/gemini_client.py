@@ -143,8 +143,6 @@ class GeminiClient:
         
         Handles cases like: {"publisher_guess": null, "review": "Moms...
         """
-        import re
-        
         # Try to find review content after "review":
         match = re.search(r'"review"\s*:\s*"([^"]*)', text)
         if match:
@@ -367,7 +365,6 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
                     cleaned_title = None
                     review = result_text
                     
-                    import re
                     publisher_match = re.match(r'^PUBLISHER:\s*(.+?)\n', result_text)
                     if publisher_match:
                         publisher_guess = publisher_match.group(1).strip()

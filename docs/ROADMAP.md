@@ -43,7 +43,7 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - [ ] **Multi-Supplier Support**: Extend parser to handle formats other than FGB.
 
 ## Known Issues
-- None currently documented.
+- **IntegrationHarness State Persistence**: During integration tests, calling `reply()` clears captured messages, which complicates testing flows that depend on previous AI-generated state (Draft Commands).
 
 ## Backlog
 
@@ -76,6 +76,7 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 
 ## Technical Debt
 - **Refactor `TASKLIST.md`**: Legacy task tracking should be fully deprecated in favor of this ROADMAP.md.
+- **Fix `IntegrationHarness` State Management**: Improve the test harness to preserve or properly snapshot state so Draft Commands (SEND/EDIT/REGEN) can be fully verified.
 
 ## Recently Completed
 - [x] **Integration Testing Framework** ✅ (2025-12-27)

@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">19.16% </span>
+                <span class="strong">24.16% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>23/120</span>
+                <span class='fraction'>29/120</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">9.09% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/22</span>
+                <span class='fraction'>2/22</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">26.66% </span>
+                <span class="strong">33.33% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>4/15</span>
+                <span class='fraction'>5/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">19.65% </span>
+                <span class="strong">24.78% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>23/117</span>
+                <span class='fraction'>29/117</span>
             </div>
         
             
@@ -548,7 +548,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">59x</span>
+<span class="cline-any cline-yes">51x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -558,36 +558,36 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -950,29 +950,29 @@ export class AIClient {
         media_count: mediaCount,
         supplier: supplier,
       });
-<span class="cstat-no" title="statement not covered" >      logger.info('Parse successful');</span>
-<span class="cstat-no" title="statement not covered" >      return response.data;</span>
+      logger.info('Parse successful');
+      return response.data;
     } catch (error: any) {
-      logger.error('Parse failed:', error.message);
-      throw new Error(`AI Processor parse failed: ${error.message}`);
+<span class="cstat-no" title="statement not covered" >      logger.error('Parse failed:', error.message);</span>
+<span class="cstat-no" title="statement not covered" >      throw new Error(`AI Processor parse failed: ${error.message}`);</span>
     }
   }
 &nbsp;
-<span class="fstat-no" title="function not covered" >  async </span>generate(
+  async generate(
     parsedData: ParsedBroadcast,
     level: number = <span class="branch-0 cbranch-no" title="branch not covered" >1,</span>
     userEdit?: string
   ): Promise&lt;GenerateResponse&gt; {
-<span class="cstat-no" title="statement not covered" >    try {</span>
-<span class="cstat-no" title="statement not covered" >      logger.info(`Calling AI Processor /generate endpoint (level=${level})`);</span>
-<span class="cstat-no" title="statement not covered" >      logger.debug({ parsedData }, 'Request payload');</span>
-      const response = <span class="cstat-no" title="statement not covered" >await this.client.post&lt;GenerateResponse&gt;('/generate', {</span>
+    try {
+      logger.info(`Calling AI Processor /generate endpoint (level=${level})`);
+      logger.debug({ parsedData }, 'Request payload');
+      const response = await this.client.post&lt;GenerateResponse&gt;('/generate', {
         parsed_data: parsedData,
         user_edit: userEdit || null,
         level: level,
       });
-<span class="cstat-no" title="statement not covered" >      logger.info('Generation successful');</span>
-<span class="cstat-no" title="statement not covered" >      return response.data;</span>
+      logger.info('Generation successful');
+      return response.data;
     } catch (error: any) {
 <span class="cstat-no" title="statement not covered" >      logger.error('Generate failed:', error.message);</span>
       // Log detailed error response if available
@@ -1225,7 +1225,7 @@ export class AIClient {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-12-27T02:41:20.320Z
+                at 2025-12-28T05:30:30.562Z
             </div>
         <script src="prettify.js"></script>
         <script>
