@@ -325,9 +325,12 @@ class BroadcastStore {
      * @returns The queue item ID
      */
     addToQueue(broadcastId: number, scheduledTime: Date): number {
+        // Format to YYYY-MM-DD HH:mm:ss for SQLite compatibility
+        const sqliteTime = scheduledTime.toISOString().replace('T', ' ').split('.')[0];
+
         const result = this.insertQueueStmt.run({
             broadcast_id: broadcastId,
-            scheduled_time: scheduledTime.toISOString(),
+            scheduled_time: sqliteTime,
         });
         const id = result.lastInsertRowid as number;
         logger.info({ queueId: id, broadcastId, scheduledTime }, 'Added to queue');

@@ -100,7 +100,8 @@ class StateStore {
     setState<T>(userJid: string, type: StateType, state: T, ttlMinutes: number = 10): void {
         try {
             const stateJson = JSON.stringify(state);
-            this.setStmt.run(userJid, type, stateJson, `+${ttlMinutes}`);
+            const ttlParam = ttlMinutes >= 0 ? `+${ttlMinutes}` : `${ttlMinutes}`;
+            this.setStmt.run(userJid, type, stateJson, ttlParam);
             logger.debug(`State saved: ${userJid}/${type} (TTL: ${ttlMinutes}min)`);
         } catch (error) {
             logger.error(`Failed to set state for ${userJid}/${type}:`, error);

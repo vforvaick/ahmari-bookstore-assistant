@@ -257,6 +257,14 @@ TULIS LANGSUNG REVIEW-NYA, jangan pakai format JSON, TITLE:, atau penjelasan lai
         prompt = self._build_review_prompt(parsed, level, user_edit)
         logger.debug(f"Built prompt, length: {len(prompt)} chars")
         
+        # ===== MOCK MODE FOR TESTING =====
+        if os.getenv('MOCK_AI', '').lower() == 'true':
+            logger.info("Using MOCK AI mode (no real API calls)")
+            return AIReviewResponse(
+                publisher_guess="Mock Publisher",
+                review=f"Moms, buku '{parsed.title}' ini sangat menarik untuk si Kecil! Isinya edukatif dan seru banget buat dibaca bareng. Recommended banget buat koleksi di rumah! (MOCK RESPONSE)"
+            )
+        
         # ===== TRY CLIPROXY FIRST (Primary Provider) =====
         try:
             router = get_router()

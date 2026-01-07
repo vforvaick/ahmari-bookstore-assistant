@@ -170,6 +170,7 @@ export class MessageHandler {
     targetJid: string;
     timeoutId: NodeJS.Timeout;
   }> = [];
+  private queueIntervalId: NodeJS.Timeout | null = null;
 
   constructor(
     private sock: WASocket,
@@ -205,8 +206,9 @@ export class MessageHandler {
    */
   private startQueueProcessor() {
     const POLL_INTERVAL_MS = 60 * 1000; // 1 minute
+    if (this.queueIntervalId) clearInterval(this.queueIntervalId);
 
-    setInterval(async () => {
+    this.queueIntervalId = setInterval(async () => {
       try {
         const nextItem = getBroadcastStore().getNextPendingItem();
 
@@ -250,6 +252,33 @@ export class MessageHandler {
     }, POLL_INTERVAL_MS);
 
     logger.info('Queue processor started (polling every 1 min)');
+  }
+
+  /**
+   * Shutdown handler and clear all timers
+   */
+  public destroy() {
+    if (this.queueIntervalId) {
+      clearInterval(this.queueIntervalId);
+      this.queueIntervalId = null;
+    }
+
+    // Clear any bulk mode timeouts
+    for (const state of this.bulkStates.values()) {
+      if (state?.timeoutId) {
+        clearTimeout(state.timeoutId);
+      }
+    }
+
+    // Clear any scheduled broadcast timeouts
+    for (const item of this.scheduledQueue) {
+      if (item.timeoutId) {
+        clearTimeout(item.timeoutId);
+      }
+    }
+    this.scheduledQueue = [];
+
+    logger.info('MessageHandler destroyed');
   }
 
   // ==================== ERROR HANDLING HELPER ====================
@@ -341,8 +370,6 @@ export class MessageHandler {
 
       // Load persisted states for this user (survives restarts)
       this.loadUserStates(from);
-
-      logger.info(`Processing message from owner: ${from}`);
 
       // Extract message text
       const messageText = this.extractMessageText(message);
@@ -1799,6 +1826,7 @@ Balas dengan angka *1* atau *2*`;
       startedAt: Date.now(),
       state: 'collecting'
     };
+    this.saveState(from, 'bulk', this.bulkState);
 
     // Set 2-minute timeout
     this.bulkState.timeoutId = setTimeout(async () => {
@@ -1878,6 +1906,7 @@ Kirim /done kalau sudah selesai.
         rawText: detection.text,
         mediaPaths
       });
+      this.saveState(from, 'bulk', this.bulkState);
 
       const count = this.bulkState.items.length;
       await this.sock.sendMessage(from, { text: `✓ ${count}` });
@@ -1975,6 +2004,7 @@ Kirim /done kalau sudah selesai.
 
     // Generate and send preview
     this.bulkState.state = 'preview_pending';
+    this.saveState(from, 'bulk', this.bulkState);
     await this.sendBulkPreview(from);
   }
 
@@ -2364,6 +2394,7 @@ Kirim /done kalau sudah selesai.
         currentPage: 0,  // Start at first page
         timestamp: Date.now()
       };
+      this.saveState(from, 'research', this.researchState, 60); // 60 min TTL for research
 
       // Send intro message with page info
       const totalPages = Math.ceil(deduped.length / 5);
@@ -2439,6 +2470,7 @@ Kirim /done kalau sudah selesai.
       if (lowerText === 'next' || lowerText === 'n') {
         if (currentPage < totalPages - 1) {
           this.researchState.currentPage = currentPage + 1;
+          this.saveState(from, 'research', this.researchState, 60);
           const newPage = currentPage + 1;
           const startIdx = newPage * pageSize;
           const endIdx = Math.min(startIdx + pageSize, totalResults);
@@ -2488,6 +2520,7 @@ Kirim /done kalau sudah selesai.
       if (lowerText === 'prev' || lowerText === 'p' || lowerText === 'back') {
         if (currentPage > 0) {
           this.researchState.currentPage = currentPage - 1;
+          this.saveState(from, 'research', this.researchState, 60);
           const newPage = currentPage - 1;
           const startIdx = newPage * pageSize;
           const endIdx = Math.min(startIdx + pageSize, totalResults);
@@ -2539,6 +2572,7 @@ Kirim /done kalau sudah selesai.
         const selectedBook = this.researchState.results![num - 1];
         this.researchState.selectedBook = selectedBook;
         this.researchState.timestamp = Date.now();
+        this.saveState(from, 'research', this.researchState, 60);
 
         await this.sock.sendMessage(from, { text: '⏳ Mempersiapkan buku...' });
 
@@ -2585,6 +2619,7 @@ Kirim /done kalau sudah selesai.
 
         // Go directly to details (image change available at draft stage with COVER option)
         this.researchState.state = 'details_pending';
+        this.saveState(from, 'research', this.researchState, 60);
         const coverStatus = this.researchState.imagePath ? '📷 Cover tersimpan' : '⚠️ Tidak ada cover';
         await this.sock.sendMessage(from, {
           text: `✅ *${this.researchState.displayTitle}*\n${coverStatus}\n\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
@@ -2675,6 +2710,7 @@ _0/BACK untuk kembali | CANCEL untuk batal_`
       }
 
       this.researchState.details = details;
+      this.saveState(from, 'research', this.researchState, 60);
 
       // Ask for level
       await this.sock.sendMessage(from, {
@@ -2696,6 +2732,7 @@ _0/BACK untuk kembali | CANCEL untuk batal_`
 
       this.researchState.state = 'draft_pending';
       this.researchState.timestamp = Date.now();
+      this.saveState(from, 'research', this.researchState, 60);
       return true;
     }
 
@@ -3076,8 +3113,10 @@ _0/BACK untuk kembali | CANCEL untuk batal_`
       closeDate = parts.slice(closeIndex + 1, closeIndex + 3).join(' ');
     }
 
-    // Look for month patterns for ETA (jan, feb, mar, etc.)
-    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    // Look for month patterns for ETA (including Indonesian names)
+    const months = [
+      'jan', 'feb', 'mar', 'apr', 'mei', 'may', 'jun', 'jul', 'agt', 'ags', 'aug', 'sep', 'okt', 'oct', 'nov', 'des', 'dec'
+    ];
     for (let i = 0; i < parts.length; i++) {
       if (parts[i] !== 'close' && months.some(m => parts[i].includes(m))) {
         // Found month, check if next part is year

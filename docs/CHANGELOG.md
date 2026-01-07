@@ -54,7 +54,33 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased]
+## [2026-01-07] - Integration Test Fixes & Coverage Boost
+### Added
+- **Research Flow Integration Test**: New `research-flow.test.ts` covering the `/new` command with multi-step (Search -> Select -> Details -> Level -> Draft).
+- **Indonesian Month Support**: Added localized month names (Mei, Ags, Des, etc.) to `parseResearchDetails` for accurate ETA extraction.
+- **Mock AI Processor**: Fully integrated `MOCK_AI=true` for localized integration testing without external API costs.
+
+### Fixed
+- **State Persistence Bug**: Found and fixed critical issue where `researchState` updates were not saved to SQLite, causing flow resets between messages. Added missing `saveState` calls.
+- **Timer Leaks**: Implemented `MessageHandler.destroy()` to clear all `setTimeout` and `setInterval` handles, resolving Jest "open handle" warnings.
+- **Database Locking**: Optimized `IntegrationHarness` to handle concurrent SQLite access between test suites and bot instances.
+- **Assertion Strings**: Updated integration test assertions to match localized Indonesian responses (e.g., "ditemukan", "pilih angka 1-10").
+
+### Technical
+- **Coverage Milestone**: Achieved **55.67% total coverage** across all files.
+- **Refactoring**: Cleaned up `messageHandler.ts` by removing verbose debug logging and standardizing state transitions.
+
+### Files Modified
+- `wa-bot/src/messageHandler.ts`
+- `wa-bot/src/aiClient.ts`
+- `wa-bot/__tests__/integration/research-flow.test.ts`
+- `wa-bot/__tests__/helpers/integrationHarness.ts`
+- `ai-processor/book_researcher.py`
+
+### Reference
+- Session: 5ecd5c63-fcc4-40dc-9932-6cdb58aeed51
+
+---
 ### Added
 - **CLIProxyAPI Integration (2025-12-27)**:
   - Primary LLM provider now routes through CLIProxyAPI gateway (fight-cuatro:8317)

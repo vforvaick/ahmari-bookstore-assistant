@@ -184,3 +184,9 @@ As of Dec 2025, the system is distributed across two VPS nodes to optimize resou
 - **Environment**: Distributed deployment across Oracle Cloud / Tencent Cloud nodes.
 - **Reliability**: Failover from CLIProxy to direct Gemini SDK enabled in `ai-processor`.
 
+### Testing & Verification
+- **Integration Testing**: Jest-based framework with `IntegrationHarness` simulating WhatsApp environment and real `AIClient` (or `MOCK_AI`).
+- **State Standardization**: Explicit `saveState` calls after every research flow transition (Search → Select → Details → Level → Draft) to ensure reliability across message interactions.
+- **Resource Cleanup**: `MessageHandler.destroy()` method handles explicit clearing of all background timers (`setTimeout`, `setInterval`) for clean tests and production lifecycle management.
+- **Coverage Goal**: Maintain >55% code coverage across core modules (`messageHandler.ts`, `aiClient.ts`, `stateStore.ts`).
+

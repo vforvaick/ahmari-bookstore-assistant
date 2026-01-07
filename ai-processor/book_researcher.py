@@ -244,10 +244,27 @@ class BookResearcher:
             List of BookSearchResult objects
         """
         if not self.api_key or not self.search_engine_id:
-            raise ValueError(
-                "Google Search API not configured. "
-                "Set GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX environment variables."
-            )
+            if os.getenv('MOCK_AI', '').lower() == 'true':
+                logger.info("Using MOCK Book Research Mode")
+            else:
+                raise ValueError(
+                    "Google Search API not configured. "
+                    "Set GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX environment variables."
+                )
+        
+        # ===== MOCK MODE =====
+        if os.getenv('MOCK_AI', '').lower() == 'true':
+            return [
+                BookSearchResult(
+                    title=f"Mock Book {i+1} for {query}",
+                    author=f"Author {i+1}",
+                    publisher="Mock Publisher",
+                    description=f"This is a mock description for book {i+1}. It's very interesting and educational for kids!",
+                    image_url="https://via.placeholder.com/300x400.png?text=Mock+Book",
+                    source_url=f"https://example.com/mock-book-{i+1}",
+                    snippet=f"Snippet for {query} book {i+1}"
+                ) for i in range(max_results)
+            ]
         
         # Enhance query for book search
         # If query seems specific (has publisher), trust it more.
@@ -489,7 +506,20 @@ class BookResearcher:
             List of dicts with image info: {url, width, height, source}
         """
         if not self.api_key or not self.search_engine_id:
-            raise ValueError("Google Search API not configured.")
+            if os.getenv('MOCK_AI', '').lower() != 'true':
+                raise ValueError("Google Search API not configured.")
+        
+        # ===== MOCK MODE =====
+        if os.getenv('MOCK_AI', '').lower() == 'true':
+            return [
+                {
+                    'url': f"https://via.placeholder.com/600x800.png?text=Mock+Cover+{i+1}",
+                    'width': 600,
+                    'height': 800,
+                    'thumbnail': f"https://via.placeholder.com/150x200.png?text=Thumb+{i+1}",
+                    'source': "example.com"
+                } for i in range(max_images)
+            ]
         
         # Search for book cover images
         search_query = f"{query} book cover"
@@ -562,7 +592,15 @@ class BookResearcher:
             Dict with enriched_description and sources_count
         """
         if not self.api_key or not self.search_engine_id:
-            raise ValueError("Google Search API not configured.")
+            if os.getenv('MOCK_AI', '').lower() != 'true':
+                raise ValueError("Google Search API not configured.")
+        
+        # ===== MOCK MODE =====
+        if os.getenv('MOCK_AI', '').lower() == 'true':
+            return {
+                "description": f"ENRICHED MOCK DESCRIPTION for {book_title}.\n\nSource 1: This book is great.\n\nSource 2: Kids love the illustrations in {book_title}.\n\nSource 3: Recommended for ages 3-5.",
+                "sources_count": 3
+            }
         
         # Search for detailed book information
         search_query = f"{book_title} book description synopsis review"

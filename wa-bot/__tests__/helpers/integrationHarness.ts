@@ -33,26 +33,35 @@ export interface CapturedMessage {
 export interface MockWASocket {
     sendMessage: jest.Mock<Promise<void>, [string, any]>;
     groupFetchAllParticipating: jest.Mock<Promise<Record<string, { subject: string }>>, []>;
-    // Internal: captured messages for assertions
+    // Internal: captured messages for current interaction only
     _capturedMessages: CapturedMessage[];
-    // Internal: clear captured messages
+    // Internal: ALL messages accumulated across entire test
+    _allMessages: CapturedMessage[];
+    // Internal: clear captured messages (per-interaction)
     _clearMessages: () => void;
+    // Internal: clear ALL messages (for test reset)
+    _clearAllMessages: () => void;
 }
 
 // Create a mock WASocket
 export function createMockSocket(): MockWASocket {
     const captured: CapturedMessage[] = [];
+    const allMessages: CapturedMessage[] = [];
 
     const socket: MockWASocket = {
         _capturedMessages: captured,
+        _allMessages: allMessages,
         _clearMessages: () => { captured.length = 0; },
+        _clearAllMessages: () => { captured.length = 0; allMessages.length = 0; },
 
         sendMessage: jest.fn(async (to: string, content: any) => {
-            captured.push({
+            const msg: CapturedMessage = {
                 to,
                 content,
                 timestamp: new Date(),
-            });
+            };
+            captured.push(msg);
+            allMessages.push(msg); // Also accumulate in history
 
             // Log the outgoing message
             const logger = getTestLogger();
@@ -285,6 +294,16 @@ export class IntegrationHarness {
         return this.getAllResponses().join(' ');
     }
 
+    // Get ALL responses from entire test (accumulated across all interactions)
+    getFullHistory(): string[] {
+        return this.socket._allMessages.map(m => m.content.text || m.content.caption || '');
+    }
+
+    // Get full history combined as single string
+    getFullHistoryCombined(): string {
+        return this.getFullHistory().join(' ');
+    }
+
     // Assert that ANY response contains text (checks all bubbles)
     assertAnyResponseContains(expected: string, description?: string): void {
         const allResponses = this.getCombinedResponse();
@@ -358,16 +377,24 @@ export class IntegrationHarness {
     // Cleanup
     async cleanup(): Promise<void> {
         try {
+            this.handler.destroy();
+        } catch { }
+
+        try {
             getStateStore().close();
+        } catch { }
+
+        try {
+            getBroadcastStore().close();
         } catch { }
 
         // Remove temp files
         if (fs.existsSync(this.tempDbPath)) {
-            fs.unlinkSync(this.tempDbPath);
+            try { fs.unlinkSync(this.tempDbPath); } catch { }
         }
         const broadcastDb = this.tempDbPath.replace('.sqlite', '-broadcast.sqlite');
         if (fs.existsSync(broadcastDb)) {
-            fs.unlinkSync(broadcastDb);
+            try { fs.unlinkSync(broadcastDb); } catch { }
         }
     }
 }

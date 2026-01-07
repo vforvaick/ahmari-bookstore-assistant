@@ -80,6 +80,14 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - ~~**Scheduler Container Refactor**~~: ✅ Fixed (2025-12-29) - Added keep-alive heartbeat to prevent immediate exit.
 
 ## Recently Completed
+- [x] **Integration Testing Framework & Coverage Boost** ✅ (2026-01-07)
+  - ✅ Achieved **55.67% total coverage** (Project target: 55%).
+  - ✅ Implemented `research-flow.test.ts` (multi-step integration).
+  - ✅ Fixed critical state persistence bug in MessageHandler.
+  - ✅ Resolved timer leaks during tests (MessageHandler.destroy()).
+  - ✅ Added Indonesian month support for localized date parsing.
+  - ✅ Integrated `MOCK_AI` for cost-effective local testing.
+
 - [x] **VPS Migration (fight-dos → fight-cuatro)** ✅ (2025-12-29)
   - Migrated from 1GB RAM (99% utilization) to 2GB RAM (50% utilization)
   - Fresh deploy + session transfer strategy
