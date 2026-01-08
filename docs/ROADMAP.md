@@ -80,6 +80,14 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - ~~**Scheduler Container Refactor**~~: ✅ Fixed (2025-12-29) - Added keep-alive heartbeat to prevent immediate exit.
 
 ## Recently Completed
+- [x] **Hybrid Parser for Littlerazy** ✅ (2026-01-09)
+  - ✅ Rule-first, AI-fallback approach for unpredictable formats.
+  - ✅ Integrated structured LLM extraction (`ai_parser.py`).
+  - ✅ Automatic detection of parse failures via `is_complete()`.
+  - ✅ Transparent integration to existing WA Bot flow.
+  - ✅ Added `stock`, `pages`, and `ai_fallback` tracking.
+  - **Ref**: Session 88f4d26d-2baa-4ce3-8d00-c3065f344685
+
 - [x] **Integration Testing Framework & Coverage Boost** ✅ (2026-01-07)
   - ✅ Achieved **55.67% total coverage** (Project target: 55%).
   - ✅ Implemented `research-flow.test.ts` (multi-step integration).

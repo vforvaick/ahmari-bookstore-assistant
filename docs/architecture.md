@@ -55,6 +55,10 @@ graph TD
 - **Role**: Logic core for parsing, broadcast generation, and image processing.
 - **Responsibilities**:
   - Parses raw broadcast text using **Multi-Supplier System** (FGB & Littlerazy).
+  - **Hybrid Parser (v2.6.0)**: Rule-first, AI-fallback for unpredictable formats.
+    - `LitterazyParser` tries regex extraction first
+    - If incomplete (missing title/price or unclean markers) → `AIParser` takes over
+    - Returns `ParsedBroadcast` with `ai_fallback=true` flag
   - **Hybrid Approach** (v1.3.0):
     - **Rule-based** (`output_formatter.py`): Price markup, template structure, link cleanup
     - **AI-based** (`gemini_client.py`): Review paragraph generation, publisher guessing
@@ -172,7 +176,7 @@ As of Dec 2025, the system is distributed across two VPS nodes to optimize resou
 
 ### 1. **fight-cuatro** (2GB RAM) - Primary Application Node
 - **wa-bot**: Primary WhatsApp connection and logic.
-- **ai-processor**: Rule-based + AI processing logic.
+- **ai-processor**: Rule-based + AI processing logic (Internal: 8000, Host: 8010 to avoid conflicts).
 - **scheduler**: Heartbeat-stabilized backup service.
 - **Resources**: ~1GB headroom maintained.
 

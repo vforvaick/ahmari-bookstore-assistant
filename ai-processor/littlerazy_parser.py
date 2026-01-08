@@ -78,6 +78,32 @@ class LitterazyParser:
         
         return result
     
+    def is_complete(self, parsed: ParsedBroadcast) -> bool:
+        """
+        Check if parsing produced usable data.
+        
+        Returns True if we have:
+        - title (clean, without format markers)
+        - price
+        
+        Returns False if title looks "unclean" (contains markers that suggest
+        the regex didn't properly extract it).
+        """
+        if not parsed.title or not parsed.price_main:
+            return False
+        
+        # Check for signs of poor title extraction
+        title = parsed.title
+        
+        # Unclean markers that suggest fallback parsing was used
+        unclean_markers = ['*', '[READY]', '[ready]', '(Stok', '(stok', 'Remainderbook']
+        
+        for marker in unclean_markers:
+            if marker in title:
+                return False
+        
+        return True
+    
     def _clean_title(self, title: str) -> str:
         """Clean and format title"""
         # Remove extra whitespace

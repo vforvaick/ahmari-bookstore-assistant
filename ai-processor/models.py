@@ -19,6 +19,10 @@ class ParsedBroadcast(BaseModel):
     separator_emoji: Optional[str] = None
     media_count: int = 0
     raw_text: str = ""
+    # New fields for hybrid parser
+    stock: Optional[int] = None  # Number of items in stock
+    pages: Optional[int] = None  # Number of pages
+    ai_fallback: bool = False  # True if parsed by AI fallback
 
 class GenerateRequest(BaseModel):
     """Request to generate Indonesian broadcast"""

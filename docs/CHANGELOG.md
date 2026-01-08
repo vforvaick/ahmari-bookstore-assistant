@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-01-09] - Hybrid Parser for Littlerazy
+
+### Added
+- **AI Fallback Parser** (`ai-processor/ai_parser.py`):
+  - New AI-based parser for unknown/changed broadcast formats
+  - Uses structured LLM extraction when rule-based parser fails
+  - Extracts: title, price, stock, format, pages, description, tags, preview_links
+  - Returns `ParsedBroadcast` with `ai_fallback=true` flag
+
+- **Hybrid Parsing Flow** (Rule-first, AI-fallback):
+  - `LitterazyParser.parse()` tries regex extraction first
+  - `is_complete()` checks for clean title + price (no asterisks, [READY], Stok markers)
+  - If incomplete → AI parser takes over automatically
+  - Transparent to WA Bot (no changes needed)
+
+- **New Model Fields** (`models.py`):
+  - `stock`: Number of items in stock
+  - `pages`: Number of pages
+  - `ai_fallback`: Boolean flag indicating AI was used
+
+### Technical
+- New file: `ai-processor/ai_parser.py`
+- New test: `ai-processor/tests/test_ai_parser.py`
+- Modified: `models.py`, `littlerazy_parser.py`, `main.py`
+
+### Reference
+- Session: 88f4d26d-2baa-4ce3-8d00-c3065f344685
+
+
+## [2026-01-08] - System Recovery (fight-cuatro)
+### Fixed
+- **Port Conflict**: Resolved port 8000 conflict on `fight-cuatro` by moving `ai-processor` host port to `8010`.
+- **Network Isolation**: Fixed `ai-processor` container starting with empty `Networks` due to port binding failure.
+- **Config**: Added missing `CLIPROXY_API_KEY` and `CLIPROXY_BASE_URL` to `docker-compose.yml` environment.
+- **Connectivity**: Verified successful connectivity from `ai-processor` to `CLIProxy` (`161.118.210.22`).
+
+### Reference
+- **Node**: fight-cuatro
+- **Session**: 4cbe9272-8d91-4fad-86a9-7c5d9d2f784c
+
+---
+
 ## [2025-12-29] - VPS Migration (fight-dos → fight-cuatro)
 
 ### Changed

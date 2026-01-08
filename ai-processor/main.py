@@ -121,17 +121,35 @@ async def update_config(request: ConfigUpdateRequest):
 
 @app.post("/parse", response_model=ParsedBroadcast)
 async def parse_broadcast(request: ParseRequest):
-    """Parse broadcast text into structured data. Supports multiple suppliers."""
+    """
+    Parse broadcast text into structured data. Supports multiple suppliers.
+    
+    For 'littlerazy' supplier: Uses hybrid approach (rule-first, AI-fallback).
+    If rule-based parsing fails to extract title + price, AI takes over.
+    """
     try:
         logger.info(f"Parsing broadcast (supplier={request.supplier}), text length: {len(request.text)}")
         
         # Route to correct parser based on supplier
         if request.supplier == 'littlerazy':
+            # Try rule-based parser first
             result = littlerazy_parser.parse(request.text, request.media_count)
+            
+            # Check if parsing is complete (has title AND price)
+            if not littlerazy_parser.is_complete(result):
+                logger.info("Littlerazy parse incomplete, triggering AI fallback...")
+                
+                # Import AI parser (lazy import to avoid circular deps)
+                from ai_parser import get_ai_parser
+                ai_parser = get_ai_parser()
+                
+                # AI takes over
+                result = await ai_parser.parse(request.text, request.media_count)
+                logger.info(f"AI fallback completed: {result.title}")
         else:
             result = fgb_parser.parse(request.text, request.media_count)
         
-        logger.info(f"Parsed successfully: {result.title}")
+        logger.info(f"Parsed successfully: {result.title} (ai_fallback={result.ai_fallback})")
         return result
     except Exception as e:
         logger.error(f"Parse error: {str(e)}")
