@@ -397,7 +397,7 @@ export class MessageHandler {
       // Check for pending state responses 
       if (this.pendingState) {
         logger.info('Checking pending response...');
-        const handled = await this.handlePendingResponse(from, messageText);
+        const handled = await this.handlePendingResponse(from, messageText, message);
         if (handled) return;
       }
 
@@ -958,7 +958,22 @@ Gunakan /groups untuk lihat JID yang valid.`
     ).toLowerCase().trim();
   }
 
-  private async handlePendingResponse(from: string, text: string): Promise<boolean> {
+  /**
+   * Extract raw message text without lowercasing - for edited drafts
+   */
+  private extractRawMessageText(message: proto.IWebMessageInfo): string {
+    const content = message.message;
+    if (!content) return '';
+
+    return (
+      content.conversation ||
+      content.extendedTextMessage?.text ||
+      content.imageMessage?.caption ||
+      ''
+    ).trim();
+  }
+
+  private async handlePendingResponse(from: string, text: string, message?: proto.IWebMessageInfo): Promise<boolean> {
     if (!this.pendingState) return false;
 
     logger.debug({ pendingState: this.pendingState.state, text }, 'handlePendingResponse called');
@@ -1213,13 +1228,13 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
         return true;
       }
 
-      // Handle BACK - return to draft_pending state
+      // Handle BACK - return to original draft
       if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
         this.pendingState.state = 'draft_pending';
         this.pendingState.timestamp = Date.now();
         this.saveState(from, 'pending', this.pendingState);
 
-        // Re-show draft with menu
+        // Re-show original draft with menu
         const { mediaPaths, draft } = this.pendingState;
         if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
           await this.sock.sendMessage(from, {
@@ -1237,8 +1252,9 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
         return true;
       }
 
-      // Any other text is treated as the edited draft - send directly to group
-      const editedDraft = text.trim();
+      // Any other text is treated as the edited draft
+      // Use RAW text to preserve capitalization
+      const editedDraft = message ? this.extractRawMessageText(message) : text.trim();
 
       if (!editedDraft) {
         await this.sock.sendMessage(from, {
@@ -1247,74 +1263,29 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
         return true;
       }
 
-      // Update draft with edited version
+      // Update draft with edited version and transition to draft_pending for confirmation
       this.pendingState.draft = editedDraft;
+      this.pendingState.state = 'draft_pending';
+      this.pendingState.timestamp = Date.now();
+      this.saveState(from, 'pending', this.pendingState);
 
-      // Send to production group
-      const sendToJid = this.targetGroupJid;
-
-      if (!sendToJid) {
+      // Show edited draft for confirmation with menu
+      const { mediaPaths } = this.pendingState;
+      if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
         await this.sock.sendMessage(from, {
-          text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
+          image: { url: mediaPaths[0] },
+          caption: formatDraftBubble(editedDraft, 'broadcast'),
         });
-        this.clearPendingState(from);
-        return true;
+      } else {
+        await this.sock.sendMessage(from, {
+          text: formatDraftBubble(editedDraft, 'broadcast'),
+        });
       }
 
-      try {
-        const { mediaPaths } = this.pendingState;
-
-        // Send to target group
-        if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
-          await this.sock.sendMessage(sendToJid, {
-            image: { url: mediaPaths[0] },
-            caption: editedDraft
-          });
-        } else {
-          await this.sock.sendMessage(sendToJid, {
-            text: editedDraft
-          });
-        }
-
-        logger.info(`Edited broadcast sent to group: ${sendToJid}`);
-
-        // Save to database
-        try {
-          const parsedData = this.pendingState.parsedData || {};
-          getBroadcastStore().saveBroadcast({
-            title: parsedData.title || 'Untitled (Edited)',
-            title_en: parsedData.title_en,
-            price_main: parsedData.price,
-            format: parsedData.format,
-            eta: parsedData.eta,
-            close_date: parsedData.close_date,
-            type: parsedData.type,
-            min_order: parsedData.min_order,
-            description_en: parsedData.description,
-            description_id: editedDraft,
-            tags: parsedData.tags,
-            preview_links: parsedData.links,
-            media_paths: mediaPaths,
-            separator_emoji: parsedData.separator || '🌳',
-            status: 'sent',
-          });
-          logger.info('Edited broadcast saved to history');
-        } catch (dbError) {
-          logger.warn('Failed to save edited broadcast to history (non-fatal):', dbError);
-        }
-
-        await this.sock.sendMessage(from, {
-          text: '✅ Broadcast (edited) berhasil dikirim ke grup!'
-        });
-
-      } catch (error: any) {
-        logger.error('Failed to send edited broadcast:', error);
-        await this.sock.sendMessage(from, {
-          text: `❌ Gagal kirim broadcast: ${error.message}`
-        });
-      } finally {
-        this.clearPendingState(from);
-      }
+      // Show confirmation menu - user can YES to send, EDIT to edit again, etc
+      await this.sock.sendMessage(from, {
+        text: getDraftMenu({ showCover: false, showLinks: false, showRegen: false, showSchedule: true, showBack: false }),
+      });
 
       return true;
     }
