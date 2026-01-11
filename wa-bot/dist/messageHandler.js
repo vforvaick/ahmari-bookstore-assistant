@@ -951,7 +951,7 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
                     // Transition to awaiting_edited_text state - keep context for sending
                     this.pendingState.state = 'awaiting_edited_text';
                     this.pendingState.timestamp = Date.now();
-                    this.saveState(from, 'pending', this.pendingState);
+                    this.saveState(from, 'pending', this.pendingState, 30); // 30 min TTL for editing
                     await this.sock.sendMessage(from, {
                         text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu kirim ke saya!\n\n_Balas *CANCEL* untuk batal._'
                     });
