@@ -72,7 +72,8 @@ class StateStore {
     setState(userJid, type, state, ttlMinutes = 10) {
         try {
             const stateJson = JSON.stringify(state);
-            this.setStmt.run(userJid, type, stateJson, `+${ttlMinutes}`);
+            const ttlParam = ttlMinutes >= 0 ? `+${ttlMinutes}` : `${ttlMinutes}`;
+            this.setStmt.run(userJid, type, stateJson, ttlParam);
             logger.debug(`State saved: ${userJid}/${type} (TTL: ${ttlMinutes}min)`);
         }
         catch (error) {

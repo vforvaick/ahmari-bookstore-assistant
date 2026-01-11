@@ -13,8 +13,8 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // Pending state (simple in-memory for now)
 interface PendingState {
-  // State: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending'
-  state: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending';
+  // State: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending' | 'awaiting_edited_text'
+  state: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending' | 'awaiting_edited_text';
   supplierType?: 'fgb' | 'littlerazy';  // Which supplier format to use
   rawText?: string;  // Raw text for deferred parsing
   parsedData?: any;  // ParsedBroadcast from AI processor
@@ -1171,10 +1171,13 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
           if (this.pendingState.draft) {
             await this.sock.sendMessage(from, { text: this.pendingState.draft });
           }
+          // Transition to awaiting_edited_text state - keep context for sending
+          this.pendingState.state = 'awaiting_edited_text';
+          this.pendingState.timestamp = Date.now();
+          this.saveState(from, 'pending', this.pendingState);
           await this.sock.sendMessage(from, {
-            text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu forward ulang ke saya!'
+            text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu kirim ke saya!\n\n_Balas *CANCEL* untuk batal._'
           });
-          this.clearPendingState(from);
           return true;
 
         case 'cancel':
@@ -1199,7 +1202,125 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
       }
     }
 
+    // STATE 3: Awaiting edited text - user sent back their edited draft
+    if (this.pendingState.state === 'awaiting_edited_text') {
+      const trimmedText = text.trim().toLowerCase();
+
+      // Handle CANCEL
+      if (trimmedText === 'cancel' || trimmedText.includes('batal')) {
+        await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
+        this.clearPendingState(from);
+        return true;
+      }
+
+      // Handle BACK - return to draft_pending state
+      if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
+        this.pendingState.state = 'draft_pending';
+        this.pendingState.timestamp = Date.now();
+        this.saveState(from, 'pending', this.pendingState);
+
+        // Re-show draft with menu
+        const { mediaPaths, draft } = this.pendingState;
+        if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+          await this.sock.sendMessage(from, {
+            image: { url: mediaPaths[0] },
+            caption: formatDraftBubble(draft || '', 'broadcast'),
+          });
+        } else {
+          await this.sock.sendMessage(from, {
+            text: formatDraftBubble(draft || '', 'broadcast'),
+          });
+        }
+        await this.sock.sendMessage(from, {
+          text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
+        });
+        return true;
+      }
+
+      // Any other text is treated as the edited draft - send directly to group
+      const editedDraft = text.trim();
+
+      if (!editedDraft) {
+        await this.sock.sendMessage(from, {
+          text: '⚠️ Text kosong. Kirim draft yang sudah di-edit, atau *CANCEL* untuk batal.'
+        });
+        return true;
+      }
+
+      // Update draft with edited version
+      this.pendingState.draft = editedDraft;
+
+      // Send to production group
+      const sendToJid = this.targetGroupJid;
+
+      if (!sendToJid) {
+        await this.sock.sendMessage(from, {
+          text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
+        });
+        this.clearPendingState(from);
+        return true;
+      }
+
+      try {
+        const { mediaPaths } = this.pendingState;
+
+        // Send to target group
+        if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+          await this.sock.sendMessage(sendToJid, {
+            image: { url: mediaPaths[0] },
+            caption: editedDraft
+          });
+        } else {
+          await this.sock.sendMessage(sendToJid, {
+            text: editedDraft
+          });
+        }
+
+        logger.info(`Edited broadcast sent to group: ${sendToJid}`);
+
+        // Save to database
+        try {
+          const parsedData = this.pendingState.parsedData || {};
+          getBroadcastStore().saveBroadcast({
+            title: parsedData.title || 'Untitled (Edited)',
+            title_en: parsedData.title_en,
+            price_main: parsedData.price,
+            format: parsedData.format,
+            eta: parsedData.eta,
+            close_date: parsedData.close_date,
+            type: parsedData.type,
+            min_order: parsedData.min_order,
+            description_en: parsedData.description,
+            description_id: editedDraft,
+            tags: parsedData.tags,
+            preview_links: parsedData.links,
+            media_paths: mediaPaths,
+            separator_emoji: parsedData.separator || '🌳',
+            status: 'sent',
+          });
+          logger.info('Edited broadcast saved to history');
+        } catch (dbError) {
+          logger.warn('Failed to save edited broadcast to history (non-fatal):', dbError);
+        }
+
+        await this.sock.sendMessage(from, {
+          text: '✅ Broadcast (edited) berhasil dikirim ke grup!'
+        });
+
+      } catch (error: any) {
+        logger.error('Failed to send edited broadcast:', error);
+        await this.sock.sendMessage(from, {
+          text: `❌ Gagal kirim broadcast: ${error.message}`
+        });
+      } finally {
+        this.clearPendingState(from);
+      }
+
+      return true;
+    }
+
     return false;
+
   }
 
   /**

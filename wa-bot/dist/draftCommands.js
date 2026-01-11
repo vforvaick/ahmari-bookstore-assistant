@@ -62,6 +62,10 @@ function parseDraftCommand(text) {
     if (normalized === 'edit' || normalized.includes('ubah') || normalized.includes('ganti')) {
         return { action: 'edit' };
     }
+    // RESTART - return to beginning of current flow
+    if (normalized === 'restart' || normalized === 'ulang semua' || normalized === 'mulai lagi') {
+        return { action: 'restart' };
+    }
     // REGEN
     if (normalized === 'regen' || normalized.includes('ulang')) {
         return { action: 'regen' };
@@ -78,10 +82,6 @@ function parseDraftCommand(text) {
     // '0' is a common shortcut for back/cancel in menu systems
     if (normalized === '0' || normalized === 'back' || normalized === 'kembali' || normalized === 'balik') {
         return { action: 'back' };
-    }
-    // RESTART - return to beginning of current flow
-    if (normalized === 'restart' || normalized === 'ulang semua' || normalized === 'mulai lagi') {
-        return { action: 'restart' };
     }
     // === BULK SELECTION (e.g., "1,2,4" or "1 2 4") ===
     const selectionMatch = normalized.match(/^[\d,\s]+$/);

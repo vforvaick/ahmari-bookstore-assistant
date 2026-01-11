@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## Recently Completed
+- [x] **EDIT Flow Fix** ✅ (2026-01-11)
+  - ✅ Fixed state clearing bug after "EDIT" command.
+  - ✅ Implemented `awaiting_edited_text` state for direct edited text broadcasting.
+  - ✅ Added navigation support (CANCEL/BACK) in edit mode.
+  - **Ref**: Session fffcf544-f794-41f9-b598-075906c14224
+
+- [x] **Hybrid Parser for Littlerazy** ✅ (2026-01-09) **AI Fallback Parser** (`ai-processor/ai_parser.py`):
+  - New AI-based parser for unknown/changed broadcast formats
+  - Uses structured LLM extraction when rule-based parser fails
+  - Extracts: title, price, stock, format, pages, description, tags, preview_links
+  - Returns `ParsedBroadcast` with `ai_fallback=true` flag
+
 ## [2026-01-09] - Hybrid Parser for Littlerazy
 
 ### Added
@@ -31,7 +44,13 @@ All notable changes to this project will be documented in this file.
 - Session: 88f4d26d-2baa-4ce3-8d00-c3065f344685
 
 
-## [2026-01-11] - PreKeyError Auto-Recovery
+## [2026-01-11] - EDIT Flow Fix & Auto-Recovery
+
+### Fixed
+- **EDIT Flow State**: Fixed issue where bot stopped responding after user clicked "EDIT".
+  - Bot now transitions to `awaiting_edited_text` state instead of clearing state.
+  - Bot waits for the edited text and sends it directly to the target group.
+  - Added support for `CANCEL` and `BACK` in edit mode.
 
 ### Added
 - **Auto-Restart Script** (`scripts/restart-wa-bot.sh`):

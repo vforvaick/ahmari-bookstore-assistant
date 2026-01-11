@@ -80,6 +80,12 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - ~~**Scheduler Container Refactor**~~: ✅ Fixed (2025-12-29) - Added keep-alive heartbeat to prevent immediate exit.
 
 ## Recently Completed
+- [x] **EDIT Flow Fix** ✅ (2026-01-11)
+  - ✅ Fixed state clearing bug after "EDIT" command.
+  - ✅ Implemented `awaiting_edited_text` state for direct edited text broadcasting.
+  - ✅ Added navigation support (CANCEL/BACK) in edit mode.
+  - **Ref**: Session fffcf544-f794-41f9-b598-075906c14224
+
 - [x] **Hybrid Parser for Littlerazy** ✅ (2026-01-09)
   - ✅ Rule-first, AI-fallback approach for unpredictable formats.
   - ✅ Integrated structured LLM extraction (`ai_parser.py`).

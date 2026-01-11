@@ -78,6 +78,7 @@ class MessageHandler {
         // Convenience getters/setters for current user (set during handleMessage)
         this.currentUserJid = '';
         this.scheduledQueue = [];
+        this.queueIntervalId = null;
         this.ownerJids = Array.isArray(ownerJidOrList) ? ownerJidOrList : [ownerJidOrList];
         // Production group (default target)
         this.targetGroupJid = process.env.TARGET_GROUP_JID || '120363420789401477@g.us';
@@ -102,7 +103,9 @@ class MessageHandler {
      */
     startQueueProcessor() {
         const POLL_INTERVAL_MS = 60 * 1000; // 1 minute
-        setInterval(async () => {
+        if (this.queueIntervalId)
+            clearInterval(this.queueIntervalId);
+        this.queueIntervalId = setInterval(async () => {
             try {
                 const nextItem = (0, broadcastStore_1.getBroadcastStore)().getNextPendingItem();
                 if (!nextItem) {
@@ -140,6 +143,29 @@ class MessageHandler {
             }
         }, POLL_INTERVAL_MS);
         logger.info('Queue processor started (polling every 1 min)');
+    }
+    /**
+     * Shutdown handler and clear all timers
+     */
+    destroy() {
+        if (this.queueIntervalId) {
+            clearInterval(this.queueIntervalId);
+            this.queueIntervalId = null;
+        }
+        // Clear any bulk mode timeouts
+        for (const state of this.bulkStates.values()) {
+            if (state?.timeoutId) {
+                clearTimeout(state.timeoutId);
+            }
+        }
+        // Clear any scheduled broadcast timeouts
+        for (const item of this.scheduledQueue) {
+            if (item.timeoutId) {
+                clearTimeout(item.timeoutId);
+            }
+        }
+        this.scheduledQueue = [];
+        logger.info('MessageHandler destroyed');
     }
     // ==================== ERROR HANDLING HELPER ====================
     /**
@@ -220,7 +246,6 @@ class MessageHandler {
             this.currentUserJid = from;
             // Load persisted states for this user (survives restarts)
             this.loadUserStates(from);
-            logger.info(`Processing message from owner: ${from}`);
             // Extract message text
             const messageText = this.extractMessageText(message);
             // Debug logging
@@ -923,10 +948,13 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
                     if (this.pendingState.draft) {
                         await this.sock.sendMessage(from, { text: this.pendingState.draft });
                     }
+                    // Transition to awaiting_edited_text state - keep context for sending
+                    this.pendingState.state = 'awaiting_edited_text';
+                    this.pendingState.timestamp = Date.now();
+                    this.saveState(from, 'pending', this.pendingState);
                     await this.sock.sendMessage(from, {
-                        text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu forward ulang ke saya!'
+                        text: '✏️ Copy draft di atas, edit sesuai keinginan, lalu kirim ke saya!\n\n_Balas *CANCEL* untuk batal._'
                     });
-                    this.clearPendingState(from);
                     return true;
                 case 'cancel':
                     await this.sock.sendMessage(from, { text: '❌ Draft dibatalkan.' });
@@ -948,6 +976,112 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
                     await this.showLevelSelection(from);
                     return true;
             }
+        }
+        // STATE 3: Awaiting edited text - user sent back their edited draft
+        if (this.pendingState.state === 'awaiting_edited_text') {
+            const trimmedText = text.trim().toLowerCase();
+            // Handle CANCEL
+            if (trimmedText === 'cancel' || trimmedText.includes('batal')) {
+                await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
+                this.clearPendingState(from);
+                return true;
+            }
+            // Handle BACK - return to draft_pending state
+            if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
+                this.pendingState.state = 'draft_pending';
+                this.pendingState.timestamp = Date.now();
+                this.saveState(from, 'pending', this.pendingState);
+                // Re-show draft with menu
+                const { mediaPaths, draft } = this.pendingState;
+                if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
+                    await this.sock.sendMessage(from, {
+                        image: { url: mediaPaths[0] },
+                        caption: (0, draftCommands_1.formatDraftBubble)(draft || '', 'broadcast'),
+                    });
+                }
+                else {
+                    await this.sock.sendMessage(from, {
+                        text: (0, draftCommands_1.formatDraftBubble)(draft || '', 'broadcast'),
+                    });
+                }
+                await this.sock.sendMessage(from, {
+                    text: (0, draftCommands_1.getDraftMenu)({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
+                });
+                return true;
+            }
+            // Any other text is treated as the edited draft - send directly to group
+            const editedDraft = text.trim();
+            if (!editedDraft) {
+                await this.sock.sendMessage(from, {
+                    text: '⚠️ Text kosong. Kirim draft yang sudah di-edit, atau *CANCEL* untuk batal.'
+                });
+                return true;
+            }
+            // Update draft with edited version
+            this.pendingState.draft = editedDraft;
+            // Send to production group
+            const sendToJid = this.targetGroupJid;
+            if (!sendToJid) {
+                await this.sock.sendMessage(from, {
+                    text: '❌ TARGET_GROUP_JID belum di-set. Tidak bisa kirim ke grup.'
+                });
+                this.clearPendingState(from);
+                return true;
+            }
+            try {
+                const { mediaPaths } = this.pendingState;
+                // Send to target group
+                if (mediaPaths && mediaPaths.length > 0 && fs_1.default.existsSync(mediaPaths[0])) {
+                    await this.sock.sendMessage(sendToJid, {
+                        image: { url: mediaPaths[0] },
+                        caption: editedDraft
+                    });
+                }
+                else {
+                    await this.sock.sendMessage(sendToJid, {
+                        text: editedDraft
+                    });
+                }
+                logger.info(`Edited broadcast sent to group: ${sendToJid}`);
+                // Save to database
+                try {
+                    const parsedData = this.pendingState.parsedData || {};
+                    (0, broadcastStore_1.getBroadcastStore)().saveBroadcast({
+                        title: parsedData.title || 'Untitled (Edited)',
+                        title_en: parsedData.title_en,
+                        price_main: parsedData.price,
+                        format: parsedData.format,
+                        eta: parsedData.eta,
+                        close_date: parsedData.close_date,
+                        type: parsedData.type,
+                        min_order: parsedData.min_order,
+                        description_en: parsedData.description,
+                        description_id: editedDraft,
+                        tags: parsedData.tags,
+                        preview_links: parsedData.links,
+                        media_paths: mediaPaths,
+                        separator_emoji: parsedData.separator || '🌳',
+                        status: 'sent',
+                    });
+                    logger.info('Edited broadcast saved to history');
+                }
+                catch (dbError) {
+                    logger.warn('Failed to save edited broadcast to history (non-fatal):', dbError);
+                }
+                await this.sock.sendMessage(from, {
+                    text: '✅ Broadcast (edited) berhasil dikirim ke grup!'
+                });
+            }
+            catch (error) {
+                logger.error('Failed to send edited broadcast:', error);
+                await this.sock.sendMessage(from, {
+                    text: `❌ Gagal kirim broadcast: ${error.message}`
+                });
+            }
+            finally {
+                this.clearPendingState(from);
+            }
+            return true;
         }
         return false;
     }
@@ -1501,6 +1635,7 @@ Balas dengan angka *1* atau *2*`;
             startedAt: Date.now(),
             state: 'collecting'
         };
+        this.saveState(from, 'bulk', this.bulkState);
         // Set 2-minute timeout
         this.bulkState.timeoutId = setTimeout(async () => {
             if (this.bulkState && this.bulkState.state === 'collecting') {
@@ -1565,6 +1700,7 @@ Kirim /done kalau sudah selesai.
                 rawText: detection.text,
                 mediaPaths
             });
+            this.saveState(from, 'bulk', this.bulkState);
             const count = this.bulkState.items.length;
             await this.sock.sendMessage(from, { text: `✓ ${count}` });
             logger.info(`Bulk item ${count} collected`);
@@ -1644,6 +1780,7 @@ Kirim /done kalau sudah selesai.
         }
         // Generate and send preview
         this.bulkState.state = 'preview_pending';
+        this.saveState(from, 'bulk', this.bulkState);
         await this.sendBulkPreview(from);
     }
     async sendBulkPreview(from) {
@@ -1978,6 +2115,7 @@ Kirim /done kalau sudah selesai.
                 currentPage: 0, // Start at first page
                 timestamp: Date.now()
             };
+            this.saveState(from, 'research', this.researchState, 60); // 60 min TTL for research
             // Send intro message with page info
             const totalPages = Math.ceil(deduped.length / 5);
             await this.sock.sendMessage(from, {
@@ -2045,6 +2183,7 @@ Kirim /done kalau sudah selesai.
             if (lowerText === 'next' || lowerText === 'n') {
                 if (currentPage < totalPages - 1) {
                     this.researchState.currentPage = currentPage + 1;
+                    this.saveState(from, 'research', this.researchState, 60);
                     const newPage = currentPage + 1;
                     const startIdx = newPage * pageSize;
                     const endIdx = Math.min(startIdx + pageSize, totalResults);
@@ -2091,6 +2230,7 @@ Kirim /done kalau sudah selesai.
             if (lowerText === 'prev' || lowerText === 'p' || lowerText === 'back') {
                 if (currentPage > 0) {
                     this.researchState.currentPage = currentPage - 1;
+                    this.saveState(from, 'research', this.researchState, 60);
                     const newPage = currentPage - 1;
                     const startIdx = newPage * pageSize;
                     const endIdx = Math.min(startIdx + pageSize, totalResults);
@@ -2138,6 +2278,7 @@ Kirim /done kalau sudah selesai.
                 const selectedBook = this.researchState.results[num - 1];
                 this.researchState.selectedBook = selectedBook;
                 this.researchState.timestamp = Date.now();
+                this.saveState(from, 'research', this.researchState, 60);
                 await this.sock.sendMessage(from, { text: '⏳ Mempersiapkan buku...' });
                 // Step 1: Get display title (cleaner format)
                 try {
@@ -2174,6 +2315,7 @@ Kirim /done kalau sudah selesai.
                 }
                 // Go directly to details (image change available at draft stage with COVER option)
                 this.researchState.state = 'details_pending';
+                this.saveState(from, 'research', this.researchState, 60);
                 const coverStatus = this.researchState.imagePath ? '📷 Cover tersimpan' : '⚠️ Tidak ada cover';
                 await this.sock.sendMessage(from, {
                     text: `✅ *${this.researchState.displayTitle}*\n${coverStatus}\n\n📝 *Masukkan detail:*\nFormat: <harga> <format> <eta> close <tanggal>\n\nContoh:\n• 350000 hb jan 26 close 25 dec\n• 250000 pb feb 26\n• 180000 bb\n\n_Harga dalam Rupiah (tanpa "Rp"), format bisa: HB/PB/BB_\n\n---\nAtau kirim /cancel untuk batal`
@@ -2252,6 +2394,7 @@ _0/BACK untuk kembali | CANCEL untuk batal_`
                 return true;
             }
             this.researchState.details = details;
+            this.saveState(from, 'research', this.researchState, 60);
             // Ask for level
             await this.sock.sendMessage(from, {
                 text: `✅ Detail tersimpan:
@@ -2271,6 +2414,7 @@ _0/BACK untuk kembali | CANCEL untuk batal_`
             });
             this.researchState.state = 'draft_pending';
             this.researchState.timestamp = Date.now();
+            this.saveState(from, 'research', this.researchState, 60);
             return true;
         }
         // STATE 3: Waiting for level selection, then generate
@@ -2599,8 +2743,10 @@ _0/BACK untuk kembali | CANCEL untuk batal_`
             // Join remaining parts as close date (e.g., "25 dec")
             closeDate = parts.slice(closeIndex + 1, closeIndex + 3).join(' ');
         }
-        // Look for month patterns for ETA (jan, feb, mar, etc.)
-        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        // Look for month patterns for ETA (including Indonesian names)
+        const months = [
+            'jan', 'feb', 'mar', 'apr', 'mei', 'may', 'jun', 'jul', 'agt', 'ags', 'aug', 'sep', 'okt', 'oct', 'nov', 'des', 'dec'
+        ];
         for (let i = 0; i < parts.length; i++) {
             if (parts[i] !== 'close' && months.some(m => parts[i].includes(m))) {
                 // Found month, check if next part is year
