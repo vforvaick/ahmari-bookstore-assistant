@@ -31,6 +31,27 @@ All notable changes to this project will be documented in this file.
 - Session: 88f4d26d-2baa-4ce3-8d00-c3065f344685
 
 
+## [2026-01-11] - PreKeyError Auto-Recovery
+
+### Added
+- **Auto-Restart Script** (`scripts/restart-wa-bot.sh`):
+  - Daily restart at 4 AM WIB to clear stale encryption sessions
+  - Prevents PreKeyError buildup from long uptimes
+
+- **Watchdog Script** (`scripts/watchdog-wa-bot.sh`):
+  - Monitors wa-bot logs every 5 minutes
+  - Auto-restarts if 5+ PreKeyErrors detected in 5 minutes
+  - 10 minute cooldown after restart to prevent restart loops
+
+### Technical
+- Cron jobs configured on fight-cuatro VPS
+- Logs: `/var/log/wa-bot-restart.log`, `/var/log/wa-bot-watchdog.log`
+
+### Reference
+- Session: 88f4d26d-2baa-4ce3-8d00-c3065f344685
+
+
+
 ## [2026-01-08] - System Recovery (fight-cuatro)
 ### Fixed
 - **Port Conflict**: Resolved port 8000 conflict on `fight-cuatro` by moving `ai-processor` host port to `8010`.
