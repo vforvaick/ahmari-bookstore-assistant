@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-01-16] - Health Monitoring & Auto-Recovery
+
+### Added
+- **HTTP Health Endpoint** (`healthServer.ts`):
+  - `/health` endpoint returns WhatsApp connection status
+  - Returns `{status: "connected"|"disconnected", uptime, lastConnected, lastDisconnected}`
+  - 200 OK when connected, 503 when disconnected
+  
+- **Docker Healthcheck**:
+  - Checks connection status every 30s
+  - Auto-restarts container if disconnected for >90s (3 retries)
+  - 2-minute start_period for initial QR scan
+
+### Technical
+- New file: `wa-bot/src/healthServer.ts`
+- Modified: `whatsapp.ts` (isConnected tracking), `index.ts` (health server init), `Dockerfile` (curl + healthcheck)
+
+### Reference
+- Session: bd3484eb-b570-4c1e-bd28-780d2982307c
+
+---
+
 ## Recently Completed
 - [x] **EDIT Flow Fix** ✅ (2026-01-11)
   - ✅ Fixed state clearing bug after "EDIT" command.
