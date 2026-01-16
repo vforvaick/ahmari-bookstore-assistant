@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
@@ -33,9 +34,9 @@ RUN mkdir -p /app/sessions /app/data /app/media
 # Expose port (if needed for health checks)
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD node -e "console.log('healthy')" || exit 1
+# Health check using actual /health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+  CMD curl -sf http://localhost:3000/health || exit 1
 
 # Run application
 CMD ["npm", "start"]
