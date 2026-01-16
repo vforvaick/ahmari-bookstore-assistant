@@ -9,6 +9,7 @@ const whatsapp_1 = require("./whatsapp");
 const aiClient_1 = require("./aiClient");
 const stateStore_1 = require("./stateStore");
 const broadcastStore_1 = require("./broadcastStore");
+const healthServer_1 = require("./healthServer");
 const path_1 = __importDefault(require("path"));
 (0, dotenv_1.config)();
 const logger = (0, pino_1.default)({ level: 'info' });
@@ -53,6 +54,10 @@ async function main() {
         logger.info(`Authorized owners: ${ownerJids.length} JIDs configured`);
         waClient.setupMessageHandler(ownerJids, aiClient, path_1.default.resolve('./media'));
         logger.info('Message handler setup complete');
+        // Start health server for Docker healthcheck
+        (0, healthServer_1.setConnectionGetter)(() => waClient.isConnected);
+        (0, healthServer_1.startHealthServer)(3000);
+        logger.info('✓ Health server started on port 3000');
         // Keep process running
         process.on('SIGINT', async () => {
             logger.info('Shutting down...');

@@ -4,6 +4,7 @@ import { WhatsAppClient } from './whatsapp';
 import { AIClient } from './aiClient';
 import { initStateStore } from './stateStore';
 import { initBroadcastStore } from './broadcastStore';
+import { startHealthServer, setConnectionGetter } from './healthServer';
 import path from 'path';
 
 config();
@@ -64,6 +65,11 @@ async function main() {
       path.resolve('./media')
     );
     logger.info('Message handler setup complete');
+
+    // Start health server for Docker healthcheck
+    setConnectionGetter(() => waClient.isConnected);
+    startHealthServer(3000);
+    logger.info('✓ Health server started on port 3000');
 
     // Keep process running
     process.on('SIGINT', async () => {

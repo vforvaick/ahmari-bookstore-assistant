@@ -42,11 +42,13 @@ const qrcode_terminal_1 = __importDefault(require("qrcode-terminal"));
 const path_1 = __importDefault(require("path"));
 const messageHandler_1 = require("./messageHandler");
 const baileysLoader_1 = require("./baileysLoader");
+const healthServer_1 = require("./healthServer");
 const logger = (0, pino_1.default)({ level: process.env.LOG_LEVEL || 'info' });
 class WhatsAppClient {
     constructor(sessionsPath = './sessions') {
         this.sock = null;
         this.messageHandler = null;
+        this.isConnected = false;
         this.sessionsPath = sessionsPath;
     }
     async connect() {
@@ -82,6 +84,8 @@ class WhatsAppClient {
             }
             // Handle connection states
             if (connection === 'close') {
+                this.isConnected = false;
+                (0, healthServer_1.notifyDisconnected)();
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !==
                     baileys.DisconnectReason.loggedOut;
                 logger.warn('Connection closed:', lastDisconnect?.error);
@@ -95,6 +99,8 @@ class WhatsAppClient {
                 }
             }
             else if (connection === 'open') {
+                this.isConnected = true;
+                (0, healthServer_1.notifyConnected)();
                 logger.info('✓ WhatsApp connection established');
             }
         });

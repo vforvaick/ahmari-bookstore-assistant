@@ -5,6 +5,7 @@ import path from 'path';
 import { MessageHandler } from './messageHandler';
 import type { AIClient } from './aiClient';
 import { loadBaileys, WASocket } from './baileysLoader';
+import { notifyConnected, notifyDisconnected } from './healthServer';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
@@ -12,6 +13,7 @@ export class WhatsAppClient {
   private sock: WASocket | null = null;
   private sessionsPath: string;
   private messageHandler: MessageHandler | null = null;
+  public isConnected: boolean = false;
 
   constructor(sessionsPath: string = './sessions') {
     this.sessionsPath = sessionsPath;
@@ -58,6 +60,9 @@ export class WhatsAppClient {
 
       // Handle connection states
       if (connection === 'close') {
+        this.isConnected = false;
+        notifyDisconnected();
+
         const shouldReconnect =
           (lastDisconnect?.error as Boom)?.output?.statusCode !==
           baileys.DisconnectReason.loggedOut;
@@ -72,6 +77,8 @@ export class WhatsAppClient {
           process.exit(1);
         }
       } else if (connection === 'open') {
+        this.isConnected = true;
+        notifyConnected();
         logger.info('✓ WhatsApp connection established');
       }
     });
