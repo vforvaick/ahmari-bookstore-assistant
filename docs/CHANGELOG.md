@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-01-19] - Message Handler Reconnection Fix
+
+### Fixed
+- **CRITICAL BUG**: Bot showing "connected" but not responding to messages after reconnection
+  - Root cause: Message handler was bound to OLD socket after WhatsApp reconnect
+  - Solution: Store handler config and rebind listener to new socket on connection.open
+
+### Added
+- `bindMessageListener()` method to attach message listener to current socket
+- Error handling wrapper around individual message processing
+- Logging for message handler rebinding events
+
+### Technical
+- Modified: `wa-bot/src/whatsapp.ts`
+
+### Reference
+- Session: bd3484eb-b570-4c1e-bd28-780d2982307c
+
+---
+
 ## [2026-01-16] - Health Monitoring & Auto-Recovery
 
 ### Added
