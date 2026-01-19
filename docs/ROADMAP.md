@@ -80,6 +80,13 @@ To completely automate the promotional workflow for Ahmari Bookstore, maintain a
 - ~~**Scheduler Container Refactor**~~: ✅ Fixed (2025-12-29) - Added keep-alive heartbeat to prevent immediate exit.
 
 ## Recently Completed
+- [x] **PO Type Prefix Feature** ✅ (2026-01-20)
+  - ✅ Support for adding PO type prefixes (PO REGULER, FAST PO, etc.) to drafts.
+  - ✅ New menu option `8. *PO*` in draft menu.
+  - ✅ Numbered selection (1-6) for PO types.
+  - ✅ Bold/Caps formatting for prefixes.
+  - **Ref**: Session 4cfb4465-59c6-4d7a-b2dc-8705d8c72389
+
 - [x] **EDIT Flow Fix** ✅ (2026-01-11)
   - ✅ Fixed state clearing bug after "EDIT" command.
   - ✅ Implemented `awaiting_edited_text` state for direct edited text broadcasting.

@@ -9,10 +9,20 @@
  * - Caption (image-based)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.PO_TYPES = void 0;
 exports.parseDraftCommand = parseDraftCommand;
 exports.getDraftMenu = getDraftMenu;
 exports.formatDraftBubble = formatDraftBubble;
 exports.getNavigationHints = getNavigationHints;
+// PO Types constant - used for adding PO type prefix to drafts
+exports.PO_TYPES = [
+    'PO REGULER',
+    'PO REMAINDER',
+    'RANDOM PO',
+    'READY STOCK',
+    'SALE',
+    'FAST PO'
+];
 /**
  * Parse user input into a DraftCommand
  * Handles all aliases and variations
@@ -78,6 +88,10 @@ function parseDraftCommand(text) {
     if (normalized === 'links' || normalized === 'link') {
         return { action: 'links' };
     }
+    // PO - add PO type prefix
+    if (normalized === 'po' || normalized === 'tipe po' || normalized === 'tipe') {
+        return { action: 'po' };
+    }
     // BACK - go to previous step
     // '0' is a common shortcut for back/cancel in menu systems
     if (normalized === '0' || normalized === 'back' || normalized === 'kembali' || normalized === 'balik') {
@@ -120,6 +134,7 @@ function getDraftMenu(options) {
         lines.push('6. *LINKS* - cari link preview');
     }
     lines.push('7. *EDIT* - edit manual');
+    lines.push('8. *PO* - tambah tipe PO');
     // Navigation options
     if (options.showBack) {
         lines.push('0. *BACK* - kembali ke langkah sebelumnya');

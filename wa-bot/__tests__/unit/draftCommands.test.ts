@@ -1,4 +1,4 @@
-import { parseDraftCommand } from '../../src/draftCommands';
+import { parseDraftCommand, PO_TYPES, getDraftMenu } from '../../src/draftCommands';
 
 describe('draftCommands - parseDraftCommand', () => {
     describe('SEND commands', () => {
@@ -93,6 +93,12 @@ describe('draftCommands - parseDraftCommand', () => {
             expect(parseDraftCommand('link')).toEqual({ action: 'links' });
         });
 
+        test('should parse PO aliases', () => {
+            expect(parseDraftCommand('po')).toEqual({ action: 'po' });
+            expect(parseDraftCommand('tipe po')).toEqual({ action: 'po' });
+            expect(parseDraftCommand('tipe')).toEqual({ action: 'po' });
+        });
+
         test('should parse BACK aliases', () => {
             expect(parseDraftCommand('0')).toEqual({ action: 'back' });
             expect(parseDraftCommand('back')).toEqual({ action: 'back' });
@@ -128,5 +134,26 @@ describe('draftCommands - parseDraftCommand', () => {
     test('should return null for unrecognized command', () => {
         expect(parseDraftCommand('random text')).toEqual({ action: null });
         expect(parseDraftCommand('')).toEqual({ action: null });
+    });
+});
+
+describe('draftCommands - PO Types', () => {
+    test('PO_TYPES should have 6 types', () => {
+        expect(PO_TYPES).toHaveLength(6);
+    });
+
+    test('PO_TYPES should contain expected values', () => {
+        expect(PO_TYPES).toContain('PO REGULER');
+        expect(PO_TYPES).toContain('PO REMAINDER');
+        expect(PO_TYPES).toContain('RANDOM PO');
+        expect(PO_TYPES).toContain('READY STOCK');
+        expect(PO_TYPES).toContain('SALE');
+        expect(PO_TYPES).toContain('FAST PO');
+    });
+
+    test('getDraftMenu should include PO option', () => {
+        const menu = getDraftMenu({});
+        expect(menu).toContain('PO');
+        expect(menu).toContain('tipe PO');
     });
 });

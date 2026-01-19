@@ -8,6 +8,18 @@
  * - Caption (image-based)
  */
 
+// PO Types constant - used for adding PO type prefix to drafts
+export const PO_TYPES = [
+    'PO REGULER',
+    'PO REMAINDER',
+    'RANDOM PO',
+    'READY STOCK',
+    'SALE',
+    'FAST PO'
+] as const;
+
+export type POType = typeof PO_TYPES[number];
+
 // Command action types
 export type DraftAction =
     | 'send'      // YES/YES DEV
@@ -17,6 +29,7 @@ export type DraftAction =
     | 'regen'     // REGEN
     | 'cover'     // COVER
     | 'links'     // LINKS
+    | 'po'        // PO type selection
     | 'select'    // Bulk selection (e.g., "1,2,4")
     | 'back'      // Go back one step
     | 'restart'   // Restart flow from beginning
@@ -108,6 +121,11 @@ export function parseDraftCommand(text: string): DraftCommand {
         return { action: 'links' };
     }
 
+    // PO - add PO type prefix
+    if (normalized === 'po' || normalized === 'tipe po' || normalized === 'tipe') {
+        return { action: 'po' };
+    }
+
     // BACK - go to previous step
     // '0' is a common shortcut for back/cancel in menu systems
     if (normalized === '0' || normalized === 'back' || normalized === 'kembali' || normalized === 'balik') {
@@ -167,6 +185,7 @@ export function getDraftMenu(options: {
     }
 
     lines.push('7. *EDIT* - edit manual');
+    lines.push('8. *PO* - tambah tipe PO');
 
     // Navigation options
     if (options.showBack) {

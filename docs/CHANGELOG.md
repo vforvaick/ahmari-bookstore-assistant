@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-01-20] - PO Type Prefix Feature
+
+### Added
+- **PO Type Prefix**: Option to add PO type prefix to draft messages after generation
+  - New menu option: `8. *PO* - tambah tipe PO` in draft menu
+  - Supports 6 PO types: PO REGULER, PO REMAINDER, RANDOM PO, READY STOCK, SALE, FAST PO
+  - User selects type → prefix added as bold text at top of draft
+  - Flow: Draft → PO → Select 1-6 → Updated draft with `*PO TYPE*` prefix
+
+### Technical
+- New `PO_TYPES` constant in `draftCommands.ts`
+- New `po_selection` state in `messageHandler.ts`
+- New unit tests: 4 tests for PO functionality (21 total tests passed)
+
+### Files Modified
+- `wa-bot/src/draftCommands.ts`
+- `wa-bot/src/messageHandler.ts`
+- `wa-bot/__tests__/unit/draftCommands.test.ts`
+
+### Reference
+- Session: 4cfb4465-59c6-4d7a-b2dc-8705d8c72389
+
+---
+
 ## [2026-01-19] - Message Handler Reconnection Fix
 
 ### Fixed

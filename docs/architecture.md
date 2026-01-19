@@ -48,6 +48,7 @@ graph TD
   - **Bulk Mode** (v1.5.0): Collect multiple broadcasts, process together, send with delays or schedule.
   - **Research Mode** (v1.6.0): `/new` command for creating promos from web-researched books.
   - **Poster Mode** (v2.0.0): `/poster` command for creating promotional posters from book covers.
+  - **PO Type Prefix** (v2.7.0): Supports adding bolded PO type labels (PO REGULER, FAST PO, etc.) as prefixes to draft messages.
   - Executes final broadcasts to target groups.
   - Manages conversation state (single, bulk, research, and poster modes) with **Per-User State Isolation** and **History Tracking** (for back navigation).
 

@@ -3,7 +3,7 @@ import { detectFGBBroadcast, DetectionResult } from './detector';
 import { AIClient, GenerateResponse, BookSearchResult, BookSearchResponse, CaptionAnalysisResult, CaptionGenerateRequest } from './aiClient';
 import { getStateStore, StateType } from './stateStore';
 import { getBroadcastStore } from './broadcastStore';
-import { parseDraftCommand, getDraftMenu, formatDraftBubble, getNavigationHints, DraftCommand } from './draftCommands';
+import { parseDraftCommand, getDraftMenu, formatDraftBubble, getNavigationHints, DraftCommand, PO_TYPES } from './draftCommands';
 import path from 'path';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -13,8 +13,8 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // Pending state (simple in-memory for now)
 interface PendingState {
-  // State: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending' | 'awaiting_edited_text'
-  state: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending' | 'awaiting_edited_text';
+  // State: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending' | 'awaiting_edited_text' | 'po_selection'
+  state: 'supplier_selection' | 'level_selection' | 'awaiting_details' | 'draft_pending' | 'awaiting_edited_text' | 'po_selection';
   supplierType?: 'fgb' | 'littlerazy';  // Which supplier format to use
   rawText?: string;  // Raw text for deferred parsing
   parsedData?: any;  // ParsedBroadcast from AI processor
@@ -1214,7 +1214,94 @@ _0/BACK untuk kembali | /skip untuk lanjut | CANCEL untuk batal_`
           await this.sock.sendMessage(from, { text: '↩️ Kembali ke pilihan level.' });
           await this.showLevelSelection(from);
           return true;
+
+        case 'po':
+          // Show PO type selection menu
+          this.pendingState.state = 'po_selection';
+          this.pendingState.timestamp = Date.now();
+          this.saveState(from, 'pending', this.pendingState);
+
+          let poMenu = '📦 *Pilih Tipe PO:*\n\n';
+          PO_TYPES.forEach((type, index) => {
+            poMenu += `${index + 1}. *${type}*\n`;
+          });
+          poMenu += '\n---\n_0/BACK untuk kembali | CANCEL untuk batal_';
+
+          await this.sock.sendMessage(from, { text: poMenu });
+          return true;
       }
+    }
+
+    // STATE 3.5: PO selection - user is selecting a PO type
+    if (this.pendingState.state === 'po_selection') {
+      const trimmedText = text.trim().toLowerCase();
+
+      // Handle BACK - return to draft_pending
+      if (trimmedText === '0' || trimmedText === 'back' || trimmedText === 'kembali' || trimmedText === 'balik') {
+        this.pendingState.state = 'draft_pending';
+        this.pendingState.timestamp = Date.now();
+        this.saveState(from, 'pending', this.pendingState);
+
+        // Re-show draft with menu
+        const { mediaPaths, draft } = this.pendingState;
+        if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+          await this.sock.sendMessage(from, {
+            image: { url: mediaPaths[0] },
+            caption: formatDraftBubble(draft || '', 'broadcast'),
+          });
+        } else {
+          await this.sock.sendMessage(from, {
+            text: formatDraftBubble(draft || '', 'broadcast'),
+          });
+        }
+        await this.sock.sendMessage(from, {
+          text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
+        });
+        return true;
+      }
+
+      // Handle CANCEL
+      if (trimmedText === 'cancel' || trimmedText.includes('batal')) {
+        await this.sock.sendMessage(from, { text: '❌ Dibatalkan.' });
+        this.clearPendingState(from);
+        return true;
+      }
+
+      // Handle PO type selection (1-6)
+      const selection = parseInt(trimmedText);
+      if (!isNaN(selection) && selection >= 1 && selection <= PO_TYPES.length) {
+        const selectedPoType = PO_TYPES[selection - 1];
+
+        // Prepend PO type to draft (bold format)
+        const currentDraft = this.pendingState.draft || '';
+        this.pendingState.draft = `*${selectedPoType}*\n\n${currentDraft}`;
+        this.pendingState.state = 'draft_pending';
+        this.pendingState.timestamp = Date.now();
+        this.saveState(from, 'pending', this.pendingState);
+
+        // Show updated draft with menu
+        const { mediaPaths, draft } = this.pendingState;
+        if (mediaPaths && mediaPaths.length > 0 && fs.existsSync(mediaPaths[0])) {
+          await this.sock.sendMessage(from, {
+            image: { url: mediaPaths[0] },
+            caption: formatDraftBubble(draft || '', 'updated'),
+          });
+        } else {
+          await this.sock.sendMessage(from, {
+            text: formatDraftBubble(draft || '', 'updated'),
+          });
+        }
+        await this.sock.sendMessage(from, {
+          text: getDraftMenu({ showCover: true, showLinks: true, showRegen: true, showSchedule: true, showBack: true }),
+        });
+        return true;
+      }
+
+      // Invalid selection
+      await this.sock.sendMessage(from, {
+        text: `⚠️ Pilih angka *1-${PO_TYPES.length}* untuk tipe PO.\n\n_0/BACK untuk kembali | CANCEL untuk batal_`
+      });
+      return true;
     }
 
     // STATE 3: Awaiting edited text - user sent back their edited draft
