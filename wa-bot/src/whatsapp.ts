@@ -22,6 +22,9 @@ export class WhatsAppClient {
     mediaPath: string;
   } | null = null;
 
+  // Flag to distinguish initial connection from reconnection
+  private hasInitiallyConnected: boolean = false;
+
   constructor(sessionsPath: string = './sessions') {
     this.sessionsPath = sessionsPath;
   }
@@ -88,12 +91,16 @@ export class WhatsAppClient {
         notifyConnected();
         logger.info('✓ WhatsApp connection established');
 
-        // CRITICAL: Rebind message handler to new socket after reconnection
-        if (this.handlerConfig && this.messageHandler) {
+        // Only rebind on RECONNECTION (not initial connection)
+        // Initial binding is done in setupMessageHandler()
+        if (this.hasInitiallyConnected && this.handlerConfig && this.messageHandler) {
           logger.info('Rebinding message handler to new socket...');
           this.bindMessageListener();
           logger.info('✓ Message handler rebound successfully');
         }
+
+        // Mark that we've connected at least once
+        this.hasInitiallyConnected = true;
       }
     });
 
