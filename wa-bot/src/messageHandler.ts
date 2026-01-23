@@ -442,6 +442,28 @@ export class MessageHandler {
       }
     } catch (error) {
       logger.error('Error handling message:', error);
+      // Notify user about the error so bot doesn't appear "dead"
+      const userJid = message.key.remoteJid;
+      if (userJid) {
+        try {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+            await this.sock.sendMessage(userJid, {
+              text: '⏱️ Koneksi timeout, coba lagi nanti ya.'
+            });
+          } else if (errorMessage.includes('quota') || errorMessage.includes('429')) {
+            await this.sock.sendMessage(userJid, {
+              text: '⚠️ Kuota AI habis, coba lagi dalam beberapa menit.'
+            });
+          } else {
+            await this.sock.sendMessage(userJid, {
+              text: '❌ Ada error saat proses pesan. Coba lagi atau ketik /help untuk bantuan.'
+            });
+          }
+        } catch (sendError) {
+          logger.error('Failed to send error notification:', sendError);
+        }
+      }
     }
   }
 
