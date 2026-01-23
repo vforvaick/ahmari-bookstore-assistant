@@ -314,7 +314,15 @@ class MessageHandler {
             }
         }
         catch (error) {
-            logger.error('Error handling message:', error);
+            // Log full error details for debugging
+            const errorStack = error instanceof Error ? error.stack : String(error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            logger.error({
+                err: errorMessage,
+                stack: errorStack,
+                messageId: message.key.id,
+                from: message.key.remoteJid,
+            }, 'Error handling message');
             // Notify user about the error so bot doesn't appear "dead"
             const userJid = message.key.remoteJid;
             if (userJid) {
@@ -3167,7 +3175,12 @@ Contoh:
             });
         }
         catch (error) {
-            logger.error('Caption image analysis failed:', error);
+            const errorStack = error instanceof Error ? error.stack : String(error);
+            logger.error({
+                err: error.message,
+                stack: errorStack,
+                from,
+            }, 'Caption image analysis failed');
             await this.sock.sendMessage(from, {
                 text: `❌ Gagal analyze gambar: ${error.message}`
             });
